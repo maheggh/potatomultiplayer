@@ -7,6 +7,7 @@ import UserStatus from '../components/UserStatus';
 const Home = () => {
   const { isLoggedIn, user } = useContext(AuthContext);
   const [password, setPassword] = useState('');
+  const [authMode, setAuthMode] = useState('register'); // 'register' or 'login'
 
   useEffect(() => {
     const storedPassword = localStorage.getItem('password');
@@ -50,12 +51,41 @@ const Home = () => {
             />
           </div>
 
-          {/* Authentication and User Status */}
+          {/* Authentication Section */}
           <div className="col-span-2 mt-6">
             {!isLoggedIn ? (
-              <div className="grid md:grid-cols-2 gap-8">
-                <Register />
-                <Login />
+              <div className="space-y-6">
+
+                {/* Fancy Tab Switcher */}
+                <div className="flex justify-center">
+                  <div className="bg-gray-700 rounded-full p-1 inline-flex">
+                    <button
+                      onClick={() => setAuthMode('register')}
+                      className={`px-6 py-2 text-sm font-semibold rounded-full transition-all duration-300 ${
+                        authMode === 'register'
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'text-gray-300 hover:text-white'
+                      }`}
+                    >
+                      Register
+                    </button>
+                    <button
+                      onClick={() => setAuthMode('login')}
+                      className={`px-6 py-2 text-sm font-semibold rounded-full transition-all duration-300 ${
+                        authMode === 'login'
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'text-gray-300 hover:text-white'
+                      }`}
+                    >
+                      Login
+                    </button>
+                  </div>
+                </div>
+
+                {/* Auth Component */}
+                <div className="grid md:grid-cols-2 gap-8">
+                  {authMode === 'register' ? <Register /> : <Login />}
+                </div>
               </div>
             ) : (
               <div className="bg-gray-700 rounded-xl p-6 shadow-lg space-y-2">
@@ -63,10 +93,9 @@ const Home = () => {
               </div>
             )}
           </div>
-
         </div>
 
-        {/* Additional Information Section */}
+        {/* Game Features */}
         <div className="mt-12 bg-gray-800 rounded-xl shadow-xl p-6 text-center">
           <h2 className="text-3xl font-semibold mb-4">Game Features</h2>
           <div className="grid md:grid-cols-4 gap-6">
@@ -89,7 +118,7 @@ const Home = () => {
           </div>
         </div>
 
-        {/* Footer Section */}
+        {/* Footer */}
         <footer className="mt-12 text-center text-gray-500 text-sm">
           Potato Underworld © 2024. All rights reserved.
         </footer>

@@ -1,4 +1,3 @@
-// Register.jsx
 import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -13,9 +12,7 @@ const Register = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isLoggedIn) {
-      navigate('/');
-    }
+    if (isLoggedIn) navigate('/');
   }, [isLoggedIn, navigate]);
 
   const registerUser = async () => {
@@ -33,9 +30,7 @@ const Register = () => {
         setUsername(data.userData.username);
         setPassword(data.userData.password);
         localStorage.setItem('password', data.userData.password);
-        console.log('Password saved:', localStorage.getItem('password'));
-
-        setMessage({ type: 'success', text: data.message || 'User registered successfully!' });
+        setMessage({ type: 'success', text: 'User registered successfully!' });
 
         if (data.token) {
           await login(data.token, data.userData.password);
@@ -49,7 +44,6 @@ const Register = () => {
         setMessage({ type: 'error', text: data.message });
       }
     } catch (error) {
-      console.error('Registration error:', error);
       setMessage({ type: 'error', text: 'Error registering user' });
     } finally {
       setIsRegistering(false);
@@ -57,27 +51,38 @@ const Register = () => {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
-      <button onClick={registerUser} disabled={isRegistering}>
-        {isRegistering ? 'Registering...' : (
-          <>
-            <FaUserPlus /> Generate Random Gangster Name
-          </>
-        )}
+    <div className="space-y-6">
+      <h2 className="text-3xl font-bold text-purple-300 flex items-center justify-center">
+        <FaUserPlus className="mr-2" /> Join the Potato Mafia
+      </h2>
+
+      <button
+        onClick={registerUser}
+        disabled={isRegistering}
+        className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-4 rounded-md transition duration-200 w-full"
+      >
+        {isRegistering ? 'Registering...' : 'Generate Random Gangster Name'}
       </button>
 
       {username && password && (
-        <div className="mt-6 p-4 bg-green-100 border border-green-400 rounded-md">
-          <FaCheckCircle />
+        <div className="p-4 bg-green-100 border border-green-400 rounded-md text-gray-800">
+          <div className="flex items-center mb-2">
+            <FaCheckCircle className="text-green-600 mr-2" />
+            <strong>Registration Successful!</strong>
+          </div>
           <p><strong>Username:</strong> {username}</p>
           <p><strong>Password:</strong> {password}</p>
-          <p className="text-red-500 font-bold">⚠️ Save this password now!</p>
+          <p className="text-sm text-red-500 font-semibold mt-2">
+            ⚠️ Save this password now. You won’t see it again.
+          </p>
         </div>
       )}
 
       {message && (
-        <div className={`mt-6 p-4 ${message.type === 'success' ? 'bg-green-100' : 'bg-red-100'}`}>
-          {message.type === 'success' ? <FaCheckCircle /> : <FaTimesCircle />}
+        <div className={`p-4 rounded-md flex items-center ${
+          message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'
+        }`}>
+          {message.type === 'success' ? <FaCheckCircle className="mr-2" /> : <FaTimesCircle className="mr-2" />}
           <span>{message.text}</span>
         </div>
       )}
