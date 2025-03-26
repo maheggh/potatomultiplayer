@@ -136,86 +136,82 @@ const AssassinationPage = () => {
   };
 
   return (
-    <div className="mx-auto p-6 text-white min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 pt-20 pb-40 mt-8 font-mono">
-      <h1 className="text-5xl font-black mb-10 text-center text-red-500 drop-shadow-lg">Assassination Mission</h1>
+    <div className="min-h-screen bg-gray-900 py-20 text-white">
+      <div className="container mx-auto px-6 py-12 md:flex md:gap-8">
+        
+        {/* Left Column: Interaction */}
+        <div className="md:w-1/2 space-y-6">
+          <h1 className="text-4xl font-bold text-red-500">Assassination Mission</h1>
+          <p className="text-gray-400">Select your target and weapons, prepare your bullets, and make your move.<br/>
+          But they will fire back... probably... so don't be an idiot.. okay?</p>
 
-      {errorMessage && <p className="text-red-400 text-center mb-4 bg-red-900 p-3 rounded-lg shadow-md">{errorMessage}</p>}
-      {resultMessage && <p className="text-green-400 text-center mb-6 bg-green-900 p-3 rounded-lg shadow-md">{resultMessage}</p>}
+          {errorMessage && <p className="bg-red-800 p-3 rounded">{errorMessage}</p>}
+          {resultMessage && <p className="bg-green-800 p-3 rounded">{resultMessage}</p>}
 
-      <div className="text-center mb-6">
-        <p className="text-2xl">Kills: <span className="font-extrabold text-green-300">{kills}</span></p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="p-5 bg-gray-800 rounded-xl shadow-xl">
-          <h2 className="text-2xl font-semibold mb-3">Select Target</h2>
-          <select
-            value={selectedTarget?._id || ''}
-            onChange={e => setSelectedTarget(targets.find(t => t._id === e.target.value))}
-            className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg p-3"
-          >
-            <option value="">Choose a target</option>
-            {targets.map(target => (
-              <option key={target._id} value={target._id}>{target.username}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="p-5 bg-gray-800 rounded-xl shadow-xl">
-          <h2 className="text-2xl font-semibold mb-3">Select Weapon</h2>
-          <div className="flex flex-wrap gap-2">
-            {weapons.map((weapon, idx) => (
-              <button
-                key={idx}
-                onClick={() => setSelectedWeapon(selectedWeapon?.name === weapon.name ? null : weapon)}
-                className={`px-4 py-2 rounded-lg text-sm ${
-                  selectedWeapon?.name === weapon.name ? 'bg-yellow-500 text-black' : 'bg-gray-700 text-white'
-                }`}
-              >
-                {weapon.name} ({weapon.attributes.accuracy}%)
-              </button>
-            ))}
+          {/* Select Target */}
+          <div className="bg-gray-800 rounded-lg p-4">
+            <label className="block mb-2">Choose Target:</label>
+            <select
+              value={selectedTarget?._id || ''}
+              onChange={e => setSelectedTarget(targets.find(t => t._id === e.target.value))}
+              className="w-full p-2 rounded bg-gray-700"
+            >
+              <option value="">Select Target</option>
+              {targets.map(target => (
+                <option key={target._id} value={target._id}>{target.username}</option>
+              ))}
+            </select>
           </div>
+
+          {/* Select Weapon */}
+          <div className="bg-gray-800 rounded-lg p-4">
+            <label className="block mb-2">Choose Weapon:</label>
+            <div className="flex flex-wrap gap-2">
+              {weapons.map((weapon) => (
+                <button
+                  key={weapon.name}
+                  onClick={() => setSelectedWeapon(selectedWeapon?.name === weapon.name ? null : weapon)}
+                  className={`px-3 py-2 rounded ${
+                    selectedWeapon?.name === weapon.name ? 'bg-yellow-500 text-black' : 'bg-gray-700'
+                  }`}
+                >
+                  {weapon.name} ({weapon.attributes.accuracy}%)
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bullets */}
+          <div className="bg-gray-800 rounded-lg p-4">
+            <label className="block mb-2">Bullets (1 bullet = $100):</label>
+            <input
+              type="number"
+              value={bulletsUsed}
+              min="1"
+              max="1000"
+              onChange={e => setBulletsUsed(Number(e.target.value))}
+              className="w-full p-2 bg-gray-700 rounded"
+            />
+          </div>
+
+          <button
+            onClick={attemptAssassination}
+            disabled={isLoading || cooldown > 0}
+            className={`w-full py-3 rounded font-bold ${
+              isLoading || cooldown > 0 ? 'bg-gray-600' : 'bg-red-600 hover:bg-red-500'
+            }`}
+          >
+            {isLoading ? 'Executing...' : 'Assassinate'}
+          </button>
+
+          {cooldown > 0 && <p className="text-yellow-400">Cooldown: {Math.ceil(cooldown / 1000)}s</p>}
+        </div>
+
+        {/* Right Column: Image */}
+        <div className="hidden md:flex md:w-1/2 items-center justify-center">
+          <img src="/assets/assassination.png" className="rounded-xl shadow-xl" alt="Assassination" />
         </div>
       </div>
-
-      <div className="p-5 bg-gray-800 rounded-xl shadow-xl mb-6">
-        <h2 className="text-2xl font-semibold mb-3">Bullets to Use</h2>
-        <input
-          type="number"
-          value={bulletsUsed}
-          onChange={e => setBulletsUsed(Number(e.target.value))}
-          className="w-full p-3 bg-gray-700 text-white border border-gray-600 rounded-lg"
-          min="1"
-          max="1000"
-        />
-      </div>
-
-      {scenarioImage && (
-        <div className="flex justify-center mb-6">
-          <img src={scenarioImage} alt="Scenario" className="w-full max-w-lg rounded-2xl shadow-2xl border-4 border-gray-700" />
-        </div>
-      )}
-
-      <div className="flex justify-center">
-        <button
-          onClick={attemptAssassination}
-          disabled={isLoading || cooldown > 0}
-          className={`text-lg px-6 py-3 rounded-full font-bold transition-all ${
-            isLoading || cooldown > 0
-              ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
-              : 'bg-red-600 hover:bg-red-700 text-white shadow-lg'
-          }`}
-        >
-          {isLoading ? 'Calculating...' : 'Assassinate Target'}
-        </button>
-      </div>
-
-      {cooldown > 0 && (
-        <div className="text-center mt-6 text-yellow-400">
-          Please wait {Math.ceil(cooldown / 1000)} seconds before trying again.
-        </div>
-      )}
     </div>
   );
 };
