@@ -185,7 +185,7 @@ exports.getUserProfile = async (req, res) => {
         inventory: user.inventory,
         bossItems: user.bossItems,
         xp: user.xp,
-        rank: rankInfo.currentRank,
+        rank: getRankForXp(user.xp).currentRank,
         kills: user.kills,
         nextRank: rankInfo.nextRank,
         nextRankThreshold: rankInfo.nextRankThreshold,

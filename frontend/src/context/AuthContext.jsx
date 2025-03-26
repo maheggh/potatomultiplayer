@@ -1,5 +1,7 @@
+// AuthContext.jsx
 import React, { createContext, useState, useEffect } from 'react';
 import jwt_decode from 'jwt-decode';
+import { getRankForXp } from '../utils/rankCalculator';
 
 export const AuthContext = createContext();
 
@@ -9,12 +11,13 @@ export const AuthProvider = ({ children }) => {
   const [money, setMoney] = useState(0);
   const [isAlive, setIsAlive] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [xp, setXp] = useState(0);
+  const [rankInfo, setRankInfo] = useState(getRankForXp(0)); // Initial rank info
 
   const fetchUserData = async () => {
     const token = localStorage.getItem('token');
     if (!token) {
-      setIsLoggedIn(false);
-      setLoading(false);
+      logout();
       return;
     }
 
@@ -31,13 +34,17 @@ export const AuthProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         setUser(data.userData);
-        setMoney(typeof data.userData.money === 'number' ? data.userData.money : 0);
+        setMoney(data.userData.money || 0);
+        setXp(data.userData.xp || 0);
         setIsAlive(data.userData.isAlive !== false);
         setIsLoggedIn(true);
+
+        const calculatedRank = getRankForXp(data.userData.xp || 0);
+        setRankInfo(calculatedRank);
       } else {
         logout();
       }
-    } catch {
+    } catch (error) {
       logout();
     } finally {
       setLoading(false);
@@ -45,7 +52,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    (async () => {
+    const initAuth = async () => {
       const token = localStorage.getItem('token');
       if (token) {
         try {
@@ -61,7 +68,8 @@ export const AuthProvider = ({ children }) => {
       } else {
         setLoading(false);
       }
-    })();
+    };
+    initAuth();
   }, []);
 
   const login = async (token) => {
@@ -70,11 +78,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('password');
+    localStorage.clear();
     setIsLoggedIn(false);
     setUser(null);
     setMoney(0);
+    setXp(0);
+    setRankInfo(getRankForXp(0));
     setIsAlive(true);
     setLoading(false);
   };
@@ -107,6 +116,9 @@ export const AuthProvider = ({ children }) => {
         isLoggedIn,
         user,
         money,
+        xp,
+        rank: rankInfo.currentRank,
+        rankInfo,
         setMoney,
         isAlive,
         login,

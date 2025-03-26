@@ -1,61 +1,67 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { AuthContext } from '../context/AuthContext';
 
 const WeaponStore = () => {
-  const { user } = useContext(AuthContext);
+  const { updateUserData } = useContext(AuthContext);
   const [money, setMoney] = useState(0);
   const [inventory, setInventory] = useState([]);
   const [weapons, setWeapons] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const weaponsResponse = await fetch('/api/weapons');
-        const weaponsData = await weaponsResponse.json();
-        if (weaponsResponse.ok && weaponsData.success) {
-          setWeapons(weaponsData.items);
-        } else {
-          setErrorMessage(weaponsData.message || 'Failed to fetch weapons.');
-        }
-
-        const userResponse = await fetch('/api/users/profile', {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        const userData = await userResponse.json();
-        if (userResponse.ok && userData.success) {
-          setMoney(userData.userData.money);
-          setInventory(userData.userData.inventory || []);
-        } else {
-          setErrorMessage(userData.message || 'Failed to fetch user data.');
-        }
-      } catch {
-        setErrorMessage('Server error occurred.');
-      }
-    };
-
-    fetchData();
+  const fetchWeapons = useCallback(async () => {
+    try {
+      const res = await fetch('/api/weapons');
+      if (!res.ok) throw new Error('Failed to fetch weapons.');
+      const { success, items, message } = await res.json();
+      if (success) setWeapons(items);
+      else setErrorMessage(message);
+    } catch {
+      setErrorMessage('Failed to fetch weapons.');
+    }
   }, []);
+
+  const fetchUserData = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/users/profile', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch user data.');
+      const { success, userData, message } = await res.json();
+      if (success) {
+        setMoney(userData.money);
+        setInventory(userData.inventory || []);
+      } else {
+        setErrorMessage(message);
+      }
+    } catch {
+      setErrorMessage('Failed to fetch user data.');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchWeapons();
+    fetchUserData();
+  }, [fetchWeapons, fetchUserData]);
 
   const handleBuyWeapon = async (weaponId) => {
     try {
-      const response = await fetch('/api/weapons/buy', {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/weapons/buy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ weaponId }),
       });
-
-      const data = await response.json();
-      if (response.ok && data.success) {
+      const data = await res.json();
+      if (res.ok && data.success) {
         setMoney(data.money);
         setInventory(data.inventory);
+        updateUserData({ money: data.money, inventory: data.inventory });
         setErrorMessage('');
-      } else {
-        setErrorMessage(data.message || 'Failed to buy weapon.');
-      }
+      } else setErrorMessage(data.message || 'Failed to buy weapon.');
     } catch {
       setErrorMessage('Server error occurred.');
     }
@@ -63,45 +69,43 @@ const WeaponStore = () => {
 
   const handleSellWeapon = async (weaponName) => {
     try {
-      const response = await fetch('/api/weapons/sell', {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/weapons/sell', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ weaponName }),
       });
-
-      const data = await response.json();
-      if (response.ok && data.success) {
+      const data = await res.json();
+      if (res.ok && data.success) {
         setMoney(data.money);
         setInventory(data.inventory);
+        updateUserData({ money: data.money, inventory: data.inventory });
         setErrorMessage('');
-      } else {
-        setErrorMessage(data.message || 'Failed to sell weapon.');
-      }
+      } else setErrorMessage(data.message || 'Failed to sell weapon.');
     } catch {
       setErrorMessage('Server error occurred.');
     }
   };
 
-  const userOwnsWeapon = (weaponName) =>
-    inventory.some((item) => item.name === weaponName);
+  const userOwnsWeapon = useCallback(
+    (weaponName) => inventory.some((item) => item.name === weaponName),
+    [inventory]
+  );
+
+  const weaponInventory = inventory.filter((item) => item.attributes?.accuracy);
 
   return (
     <div className="min-h-screen min-w-full bg-gray-900 text-white py-20">
       <div className="container min-w-full mx-auto px-6 py-12 md:flex md:gap-8">
-
-        {/* Left Column: Store Illustration */}
+        {/* Store Illustration */}
         <div className="hidden md:flex md:w-1/2">
-          <img
-            src="/assets/weaponstore.png"
-            className="object-fit"
-            alt="Weapon Store"
-          />
+          <img src="/assets/weaponstore.png" alt="Weapon Store" className="object-fit" />
         </div>
 
-        {/* Right Column: Shop Interaction */}
+        {/* Shop Interaction */}
         <div className="md:w-1/2 space-y-6">
           <p className="text-gray-400">
             Upgrade your arsenal and dominate the potato mafia world!
@@ -128,10 +132,7 @@ const WeaponStore = () => {
                   <p className="text-green-400 font-semibold">💰 ${weapon.price}</p>
                   <p className="text-gray-300">🎯 {weapon.accuracy}% Accuracy</p>
                   {userOwnsWeapon(weapon.name) ? (
-                    <button
-                      disabled
-                      className="mt-2 bg-gray-500 py-1 px-4 rounded-lg cursor-not-allowed"
-                    >
+                    <button disabled className="mt-2 bg-gray-500 py-1 px-4 rounded-lg cursor-not-allowed">
                       Owned
                     </button>
                   ) : (
@@ -149,8 +150,8 @@ const WeaponStore = () => {
 
           <div className="bg-gray-800 rounded-lg p-4">
             <h2 className="text-2xl mb-4 font-semibold">🎒 Your Inventory</h2>
-            {inventory.filter(item => item.attributes?.accuracy).length ? (
-              inventory.filter(item => item.attributes?.accuracy).map((invItem, idx) => (
+            {weaponInventory.length > 0 ? (
+              weaponInventory.map((invItem, idx) => (
                 <div
                   key={idx}
                   className="flex justify-between items-center bg-gray-700 p-3 rounded-lg mb-2"
@@ -174,7 +175,6 @@ const WeaponStore = () => {
               💰 Money: <span className="text-green-400 font-bold">${money}</span>
             </p>
           </div>
-
         </div>
       </div>
     </div>

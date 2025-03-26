@@ -7,5 +7,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 router.post('/steal', authMiddleware, theftController.stealItem);
 router.post('/sell', authMiddleware, theftController.sellItem);
+router.get('/stolen-items', authMiddleware, theftController.getStolenItems);
+
 
 module.exports = router;
