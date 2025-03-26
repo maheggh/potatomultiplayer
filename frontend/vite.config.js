@@ -5,12 +5,12 @@ import commonjs from 'vite-plugin-commonjs';
 export default defineConfig({
   plugins: [
     react(),
-    commonjs() // Add this line
+    commonjs()
   ],
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: process.env.VITE_BACKEND_URL || 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
       },
