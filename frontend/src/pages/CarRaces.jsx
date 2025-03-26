@@ -9,7 +9,28 @@ const CarRaces = () => {
   const [raceCooldown, setRaceCooldown] = useState(false);
   const [cooldownMessage, setCooldownMessage] = useState('');
 
-  const allCars = [/* Your existing allCars array */];
+  const allCars = [
+    { name: 'Luxury Spud Sedan', price: 120000, baseChance: 5, image: '/assets/luxury-spud-sedan.png', type: 'car' },
+    { name: 'Sporty Tater Coupe', price: 40000, baseChance: 8, image: '/assets/sporty-tater-coupe.png', type: 'car' },
+    { name: 'Potato Convertible', price: 30000, baseChance: 10, image: '/assets/potato-convertible.png', type: 'car' },
+    { name: 'SUV Spud', price: 2000, baseChance: 20, image: '/assets/suv-spud.png', type: 'car' },
+    { name: 'Hatchback Tuber', price: 1500, baseChance: 20, image: '/assets/hatchback-tuber.png', type: 'car' },
+    { name: 'Sedan Yam', price: 20000, baseChance: 10, image: '/assets/sedan-yam.png', type: 'car' },
+    { name: 'SUV Tater', price: 25000, baseChance: 8, image: '/assets/suv-tater.png', type: 'car' },
+    { name: 'Spudnik Sports', price: 90000, baseChance: 4, image: '/assets/spudnik-sports.png', type: 'car' },
+    { name: 'Compact Fry', price: 10000, baseChance: 25, image: '/assets/compact-fry.png', type: 'car' },
+    { name: 'Curly Coupe', price: 15000, baseChance: 20, image: '/assets/curly-coupe.png', type: 'car' },
+    { name: 'Wedge Wagon', price: 20000, baseChance: 15, image: '/assets/wedge-wagon.png', type: 'car' },
+    { name: 'Crispy Convertible', price: 110000, baseChance: 5, image: '/assets/crispy-convertible.png', type: 'car' },
+    { name: 'Mashed Mini', price: 500, baseChance: 30, image: '/assets/mashed-mini.png', type: 'car' },
+    { name: 'Buttery Buggy', price: 8000, baseChance: 20, image: '/assets/buttery-buggy.png', type: 'car' },
+    { name: 'Gravy Sedan', price: 12000, baseChance: 15, image: '/assets/gravy-sedan.png', type: 'car' },
+    { name: 'Peeler Pickup', price: 18000, baseChance: 5, image: '/assets/peeler-pickup.png', type: 'car' },
+    { name: 'Root Roadster', price: 7000, baseChance: 30, image: '/assets/root-roadster.png', type: 'car' },
+    { name: 'Bulb Buggy', price: 10000, baseChance: 25, image: '/assets/bulb-buggy.png', type: 'car' },
+    { name: 'Starch Sedan', price: 15000, baseChance: 15, image: '/assets/starch-sedan.png', type: 'car' },
+    { name: 'Tuber Truck', price: 60000, baseChance: 5, image: '/assets/tuber-truck.png', type: 'car' },
+  ];
 
   useEffect(() => {
     fetchStolenCars();
@@ -28,42 +49,51 @@ const CarRaces = () => {
   };
 
   const handleRace = async () => {
-    if (raceCooldown || !selectedCar) return;
-
+    if (raceCooldown || !selectedCar) {
+      alert('Select a car and ensure no cooldown is active.');
+      return;
+    }
+  
     const playerCar = stolenCars.find(car => car.name === selectedCar);
     const opponentCar = allCars[Math.floor(Math.random() * allCars.length)];
-
+  
     const playerSpeed = playerCar.price / 1000 + Math.random() * 20;
     const opponentSpeed = opponentCar.price / 1000 + Math.random() * 20;
-
+  
     let message = '', image = '';
-
-    if (Math.random() < 0.08) {
-      await removeCar(playerCar.name);
-      message = `Disaster! Your ${playerCar.name} crashed!`;
-      image = '/assets/race2.png';
-    } else if (playerSpeed > opponentSpeed) {
-      const wonCar = allCars[Math.floor(Math.random() * allCars.length)];
-      await addCar(wonCar);
-      message = `You won! You took home a ${wonCar.name}.`;
-      image = '/assets/race6.png';
-    } else {
-      await removeCar(playerCar.name);
-      message = `You lost your ${playerCar.name}!`;
-      image = '/assets/race8.png';
+  
+    try {
+      if (Math.random() < 0.08) {
+        await removeCar(playerCar.name);
+        message = `Disaster! Your ${playerCar.name} crashed!`;
+        image = '/assets/race2.png';
+      } else if (playerSpeed > opponentSpeed) {
+        const wonCar = allCars[Math.floor(Math.random() * allCars.length)];
+        await addCar(wonCar);
+        message = `You won! You took home a ${wonCar.name}.`;
+        image = '/assets/race6.png';
+      } else {
+        await removeCar(playerCar.name);
+        message = `You lost your ${playerCar.name}!`;
+        image = '/assets/race8.png';
+      }
+  
+      setRaceResult({ message, image });
+      startCooldown(30);
+      setSelectedCar('');
+    } catch (error) {
+      console.error('Race error:', error);
+      alert('An error occurred during the race.');
     }
-
-    setRaceResult({ message, image });
-    startCooldown(30);
-    setSelectedCar('');
   };
+  
 
   const startCooldown = duration => {
     setRaceCooldown(true);
-    setCooldownMessage(`Lay low for ${duration} seconds.`);
+    setCooldownMessage(`You have too much heat on you dawg, lay low for ${duration} seconds.`);
     const interval = setInterval(() => {
       duration -= 1;
-      setCooldownMessage(`Lay low for ${duration} seconds.`);
+      setCooldownMessage(`You have too much heat on you dawg, lay low for ${duration} seconds.`);
       if (duration <= 0) {
         clearInterval(interval);
         setRaceCooldown(false);
@@ -135,17 +165,22 @@ const CarRaces = () => {
             Start Race
           </button>
 
-          {raceResult?.image && (
-            <img
-              src={raceResult.image}
-              alt="Race Result"
-              className="rounded-lg shadow-md w-full mt-4"
-            />
-          )}
+          {raceResult && (
+  <div className="mt-6 bg-gray-800 rounded-xl shadow-lg overflow-hidden p-4 flex flex-col items-center justify-center">
+    <img
+      src={raceResult.image}
+      alt="Race Outcome"
+      className="w-full max-w-md object-cover rounded-lg shadow-md mb-4"
+    />
+    <p className="text-center text-xl font-semibold text-gray-100">
+      {raceResult.message}
+    </p>
+  </div>
+)}
         </div>
 
         {/* Right Side: Big Race Image */}
-        <div className="hidden md:flex md:w-1/2 items-center justify-center">
+        <div className="">
           <img
             src="/assets/race7.png"
             alt="Racing Scene"
