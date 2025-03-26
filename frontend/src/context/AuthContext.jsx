@@ -12,7 +12,7 @@ export const AuthProvider = ({ children }) => {
   const [isAlive, setIsAlive] = useState(true);
   const [loading, setLoading] = useState(true);
   const [xp, setXp] = useState(0);
-  const [rankInfo, setRankInfo] = useState(getRankForXp(0)); // Initial rank info
+  const [rankInfo, setRankInfo] = useState(getRankForXp(0));
 
   const fetchUserData = async () => {
     const token = localStorage.getItem('token');
@@ -38,13 +38,12 @@ export const AuthProvider = ({ children }) => {
         setXp(data.userData.xp || 0);
         setIsAlive(data.userData.isAlive !== false);
         setIsLoggedIn(true);
-
-        const calculatedRank = getRankForXp(data.userData.xp || 0);
-        setRankInfo(calculatedRank);
+        setRankInfo(getRankForXp(data.userData.xp || 0));
       } else {
         logout();
       }
     } catch (error) {
+      console.error("Error fetching user data:", error);
       logout();
     } finally {
       setLoading(false);
@@ -62,7 +61,8 @@ export const AuthProvider = ({ children }) => {
           } else {
             await fetchUserData();
           }
-        } catch {
+        } catch (error) {
+          console.error("Error initializing auth:", error);
           logout();
         }
       } else {
@@ -72,13 +72,17 @@ export const AuthProvider = ({ children }) => {
     initAuth();
   }, []);
 
-  const login = async (token) => {
+  const login = async (token, generatedPassword = null) => {
     localStorage.setItem('token', token);
+    if (generatedPassword) {
+      localStorage.setItem('password', generatedPassword);
+    }
     await fetchUserData();
   };
 
   const logout = () => {
-    localStorage.clear();
+    localStorage.removeItem('token');
+    localStorage.removeItem('password'); // Remove if you don't want it persistent
     setIsLoggedIn(false);
     setUser(null);
     setMoney(0);

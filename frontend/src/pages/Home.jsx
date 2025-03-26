@@ -60,12 +60,6 @@ const Home = () => {
             ) : (
               <div className="bg-gray-700 rounded-xl p-6 shadow-lg space-y-2">
                 <UserStatus />
-                <div className="mt-4 bg-gray-800 rounded-lg p-4">
-                  <h3 className="text-xl font-semibold">Your Credentials:</h3>
-                  <p className="mt-2"><strong>Username:</strong> <span className="text-green-400">{user.username}</span></p>
-                  <p><strong>Password:</strong> <span className="text-yellow-300">{password || "Not available"}</span></p>
-                  <p className="text-sm text-gray-400 mt-2">Store these safely! You won't be able to see this again.</p>
-                </div>
               </div>
             )}
           </div>

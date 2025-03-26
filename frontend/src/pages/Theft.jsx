@@ -144,7 +144,7 @@ const Theft = () => {
   };
 
   return (
-    <div className="container mx-auto p-6 mb-40 bg-white rounded-lg shadow-md">
+    <div className="container mx-auto p-6 mb-40 bg-white rounded-lg">
       <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">Theft</h2>
       <p className="text-gray-500 mt-2 p-4 text-lg text-center">
         Steal from the weak, risk jail, and sell what you can before you're caught.
@@ -157,7 +157,7 @@ const Theft = () => {
             <img 
               src={`/assets/${cat.toLowerCase()}.png`} 
               alt={cat}
-              className="w-full h-32 object-contain rounded-md mb-4" 
+              className="w-full h-64 object-contain rounded-md mb-4" 
             />
             <button
               onClick={() => stealItem(cat)}

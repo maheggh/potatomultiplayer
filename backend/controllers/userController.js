@@ -47,6 +47,7 @@ exports.registerUser = async (req, res) => {
         xp: newUser.xp,             // recommended
         rank: newUser.rank,         // recommended
         kills: newUser.kills,       // recommended
+        password,
         message: 'User registered successfully',
       },
     });

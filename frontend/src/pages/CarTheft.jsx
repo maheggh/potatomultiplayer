@@ -203,7 +203,7 @@ useEffect(() => {
   };
 
   return (
-    <div className="container mx-auto p-6 mb-40 bg-white rounded-lg shadow-md">
+    <div className="container mx-auto p-6 mb-40 bg-white rounded-lg">
       <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">Car Theft</h2>
       <p className="text-gray-500 text-center mb-4">
         Why steal a car when you can't even drive? <br />

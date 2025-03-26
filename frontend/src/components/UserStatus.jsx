@@ -9,12 +9,13 @@ const UserStatus = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isLoggedIn && user) {
-      const storedPassword = localStorage.getItem('password');
-      if (storedPassword) setPassword(storedPassword);
-    }
-  }, [isLoggedIn, user]);
+useEffect(() => {
+  if (typeof window !== 'undefined' && isLoggedIn && user) {
+    const storedPassword = localStorage.getItem('password');
+    console.log('Retrieved from localStorage:', storedPassword);
+    if (storedPassword) setPassword(storedPassword);
+  }
+}, [isLoggedIn, user]);
 
   useEffect(() => {
     if (user && !user.isAlive) navigate('/dead');
@@ -64,27 +65,31 @@ const UserStatus = () => {
         </p>
       </div>
 
-      {password && (
-        <div className="mb-6">
-          <label className="block font-semibold mb-2">Password:</label>
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              readOnly
-              className="w-full px-4 py-2 pr-10 border border-gray-600 bg-gray-700 rounded-md focus:outline-none"
-            />
-            <button
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-300"
-              title={showPassword ? 'Hide Password' : 'Show Password'}
-            >
-              {showPassword ? <FaEyeSlash /> : <FaEye />}
-            </button>
-          </div>
-          <p className="text-sm text-gray-400 mt-2">Remember to save your credentials safely!</p>
-        </div>
-      )}
+      {password ? (
+  <div className="mb-6">
+    <label className="block font-semibold mb-2">Password:</label>
+    <div className="relative">
+      <input
+        type={showPassword ? 'text' : 'password'}
+        value={password}
+        readOnly
+        className="w-full px-4 py-2 pr-10 border border-gray-600 bg-gray-700 rounded-md focus:outline-none"
+      />
+      <button
+        onClick={() => setShowPassword(!showPassword)}
+        className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-300"
+        title={showPassword ? 'Hide Password' : 'Show Password'}
+      >
+        {showPassword ? <FaEyeSlash /> : <FaEye />}
+      </button>
+    </div>
+    <p className="text-sm text-gray-400 mt-2">Remember to save your credentials safely!</p>
+  </div>
+) : (
+  <div className="mb-6 text-red-400">
+    Password not available. Make sure to save it when registering!
+  </div>
+)}
 
       {/* User Stats (Optional addition) */}
       <div className="bg-gray-700 p-4 rounded-lg shadow-inner mb-4">
