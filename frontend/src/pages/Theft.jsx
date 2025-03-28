@@ -220,9 +220,6 @@ const Theft = () => {
       </div>
 
       <div className="mt-6 text-center font-bold text-xl text-green-600">Money: ${money}</div>
-      <button onClick={handleCheat} className="mt-6 bg-red-600 text-white px-6 py-3 rounded-full">
-        Cheat
-      </button>
     </div>
   );
 };

@@ -254,7 +254,6 @@ useEffect(() => {
 
       <p className="mt-4 text-center font-bold">Money: ${money}</p>
 
-      <button onClick={handleCheat} className="mt-4 bg-red-600 text-white px-6 py-3 rounded-full hover:bg-red-700">Cheat</button>
     </div>
   );
 };
