@@ -1,114 +1,126 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { FaEye, FaEyeSlash, FaSignOutAlt, FaUserCircle } from 'react-icons/fa';
+import { FaSignOutAlt, FaUserCircle, FaCopy, FaCheckCircle, FaExclamationTriangle, FaMoneyBillWave, FaStar, FaTachometerAlt, FaSkull } from 'react-icons/fa'; // Added stat icons
 
 const UserStatus = () => {
-  const { user, isLoggedIn, logout, loading } = useContext(AuthContext);
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const { user, isLoggedIn, logout, loading, money, xp, rank, kills } = useContext(AuthContext);
   const navigate = useNavigate();
-
-useEffect(() => {
-  if (typeof window !== 'undefined' && isLoggedIn && user) {
-    const storedPassword = localStorage.getItem('password');
-    console.log('Retrieved from localStorage:', storedPassword);
-    if (storedPassword) setPassword(storedPassword);
-  }
-}, [isLoggedIn, user]);
+  const [tempPassword, setTempPassword] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (user && !user.isAlive) navigate('/dead');
-  }, [user, navigate]);
+      if (isLoggedIn && !tempPassword) {
+          const storedPassword = localStorage.getItem('temp_password');
+          if (storedPassword) {
+              console.log("UserStatus: Found temp password in localStorage.");
+              setTempPassword(storedPassword);
+              // Consider removing immediately after first display if desired
+              // localStorage.removeItem('temp_password');
+          } else {
+              console.log("UserStatus: No temp password found in localStorage.");
+          }
+      }
+      // Clear password display if user logs out while component is mounted
+      if (!isLoggedIn && tempPassword) {
+          setTempPassword('');
+      }
+  }, [isLoggedIn, tempPassword]);
 
   const handleLogout = () => {
     logout();
-    navigate('/');
+    navigate('/auth'); // Navigate to auth page after logout
   };
 
-  if (loading)
-    return (
-      <div className="flex justify-center items-center h-screen bg-gray-900 text-white">
-        <div className="text-xl font-semibold">Loading...</div>
-      </div>
-    );
+  const copyToClipboard = (text) => {
+      navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2500); // Show feedback slightly longer
+      }, (err) => {
+          console.error('Failed to copy text: ', err);
+          // Optionally show an error message to the user here
+      });
+  };
 
-  if (!isLoggedIn || !user)
-    return (
-      <div className="flex justify-center items-center h-screen bg-gray-900 text-white">
-        <div className="text-xl font-semibold">Not logged in</div>
-      </div>
-    );
+  // Loading state from AuthContext
+  if (loading) {
+     return (
+       <div className="bg-gray-800/80 backdrop-blur-sm text-white rounded-xl shadow-xl p-6 mx-auto mt-8 text-center border border-gray-700">
+         Syncing with the mainframe...
+       </div>
+     );
+  }
+
+  // Shouldn't be reachable if parent component handles it, but good fallback
+  if (!isLoggedIn || !user) {
+     return (
+       <div className="bg-gray-800/80 backdrop-blur-sm text-white rounded-xl shadow-xl p-6 mx-auto mt-8 text-center border border-gray-700">
+         No active gangster found.
+       </div>
+     );
+  }
 
   return (
-    <div className="bg-gray-800 text-white rounded-xl shadow-xl p-6 mx-auto mt-8">
-      
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-700 pb-4 mb-4">
-        <div className="flex items-center">
-          <FaUserCircle className="text-4xl mr-2 text-gray-300" />
-          <h2 className="text-2xl font-bold">Account Information</h2>
+    // Enhanced main container styling
+    <div className="bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-xl shadow-2xl p-6 mx-auto max-w-md border border-purple-700/50">
+
+      {/* Header Section */}
+      <div className="flex items-center justify-between border-b border-gray-700 pb-4 mb-6">
+        <div className="flex items-center gap-3">
+          <FaUserCircle className="text-5xl text-purple-400" />
+          <div>
+            <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-blue-300">Account Dossier</h2>
+            <p className="text-sm text-gray-400">Your Underworld Stats</p>
+          </div>
         </div>
         <button
           onClick={handleLogout}
-          className="text-red-500 hover:text-red-600 transition duration-200"
-          title="Logout"
+          className="text-red-400 hover:text-red-300 transition duration-200 p-2 rounded-full hover:bg-red-500/20"
+          title="Disappear" // Themed title
         >
-          <FaSignOutAlt size={24} />
+          <FaSignOutAlt size={22} />
         </button>
       </div>
 
-      {/* User Credentials */}
-      <div className="mb-4">
-        <p className="text-lg">
-          <strong>Username:</strong> <span className="text-green-400">{user.username}</span>
+      {/* Temporary Password Display */}
+      {tempPassword && (
+        <div className="bg-yellow-500/20 border-l-4 border-yellow-400 p-4 rounded-lg text-yellow-100 mb-6 shadow-lg animate-fade-in">
+          <div className="flex items-start text-yellow-200 font-semibold mb-2">
+            <FaExclamationTriangle className="mr-2 mt-0.5 flex-shrink-0 text-yellow-300" size={20}/>
+            URGENT: Stash Your Secret Code NOW!
+          </div>
+          <div className="relative mb-3">
+            <strong className="text-yellow-200">Password:</strong>
+            {/* Password field */}
+            <div className="mt-1 flex items-center bg-gray-900/50 p-2 rounded">
+                <span className="flex-1 font-mono text-yellow-100 break-all text-sm tracking-wider">{tempPassword}</span>
+                 <button
+                    onClick={() => copyToClipboard(tempPassword)}
+                    title="Copy Code"
+                    className={`ml-2 p-1.5 rounded text-gray-300 hover:text-white hover:bg-gray-600/50 ${copied ? 'text-green-400' : ''}`}
+                >
+                    {copied ? <FaCheckCircle size={18}/> : <FaCopy size={18}/>}
+                 </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Username Display */}
+      <div className="mb-6 bg-gray-700/50 p-4 rounded-lg shadow-inner">
+        <p className="text-lg flex items-center gap-2">
+          <span className="font-semibold text-gray-300">Alias:</span>
+          <span className="text-purple-400 font-bold text-xl">{user.username}</span>
         </p>
       </div>
 
-      {password ? (
-  <div className="mb-6">
-    <label className="block font-semibold mb-2">Password:</label>
-    <div className="relative">
-      <input
-        type={showPassword ? 'text' : 'password'}
-        value={password}
-        readOnly
-        className="w-full px-4 py-2 pr-10 border border-gray-600 bg-gray-700 rounded-md focus:outline-none"
-      />
-      <button
-        onClick={() => setShowPassword(!showPassword)}
-        className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-300"
-        title={showPassword ? 'Hide Password' : 'Show Password'}
-      >
-        {showPassword ? <FaEyeSlash /> : <FaEye />}
-      </button>
-    </div>
-    <p className="text-sm text-gray-400 mt-2">Remember to save your credentials safely!</p>
-  </div>
-) : (
-  <div className="mb-6 text-red-400">
-    Password not available. Make sure to save it when registering!
-  </div>
-)}
-
-      {/* User Stats (Optional addition) */}
-      <div className="bg-gray-700 p-4 rounded-lg shadow-inner mb-4">
-        <h3 className="text-xl font-semibold mb-2">Statistics</h3>
-        <ul className="text-gray-200 space-y-1">
-          <li>💰 Money: <span className="text-green-300">${user.money}</span></li>
-          <li>⭐ XP: <span className="text-yellow-300">{user.xp}</span></li>
-          <li>🏅 Rank: <span className="text-blue-300">{user.rank}</span></li>
-          <li>🔫 Kills: <span className="text-red-400">{user.kills}</span></li>
-        </ul>
-      </div>
-
-      {/* Logout Button */}
+      {/* Logout Button - Enhanced */}
       <button
         onClick={handleLogout}
-        className="w-full flex items-center justify-center bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition duration-200"
+        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-pink-700 hover:from-red-700 hover:to-pink-800 text-white font-bold py-3 px-4 rounded-lg transition duration-300 shadow-md hover:shadow-lg transform hover:scale-105"
       >
-        <FaSignOutAlt className="mr-2" />
-        Logout
+        <FaSignOutAlt /> Go Off-Grid
       </button>
     </div>
   );

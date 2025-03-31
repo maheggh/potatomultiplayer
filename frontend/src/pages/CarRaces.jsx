@@ -1,15 +1,13 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { AuthContext } from '../context/AuthContext';
+import axios from 'axios'; // Use axios
+import { FaCar, FaFlagCheckered, FaDollarSign, FaTimesCircle, FaCheckCircle, FaSpinner, FaClock, FaExclamationTriangle, FaPlus, FaTrashAlt } from 'react-icons/fa'; // Added more icons
 
-const CarRaces = () => {
-  const { user } = useContext(AuthContext);
-  const [stolenCars, setStolenCars] = useState([]);
-  const [selectedCar, setSelectedCar] = useState('');
-  const [raceResult, setRaceResult] = useState(null);
-  const [raceCooldown, setRaceCooldown] = useState(false);
-  const [cooldownMessage, setCooldownMessage] = useState('');
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-  const allCars = [
+// Define allCars directly or import if it gets large
+const allCars = [
+    // ... (keep your full list of car objects here) ...
     { name: 'Luxury Spud Sedan', price: 120000, baseChance: 5, image: '/assets/luxury-spud-sedan.png', type: 'car' },
     { name: 'Sporty Tater Coupe', price: 40000, baseChance: 8, image: '/assets/sporty-tater-coupe.png', type: 'car' },
     { name: 'Potato Convertible', price: 30000, baseChance: 10, image: '/assets/potato-convertible.png', type: 'car' },
@@ -30,164 +28,307 @@ const CarRaces = () => {
     { name: 'Bulb Buggy', price: 10000, baseChance: 25, image: '/assets/bulb-buggy.png', type: 'car' },
     { name: 'Starch Sedan', price: 15000, baseChance: 15, image: '/assets/starch-sedan.png', type: 'car' },
     { name: 'Tuber Truck', price: 60000, baseChance: 5, image: '/assets/tuber-truck.png', type: 'car' },
-  ];
+];
+
+const CarRaces = () => {
+  const { user, isLoggedIn, loading: authLoading } = useContext(AuthContext); // No need for updateUserData if backend handles it
+  const [stolenCars, setStolenCars] = useState([]);
+  const [selectedCarName, setSelectedCarName] = useState(''); // Store name instead of object
+  const [raceResult, setRaceResult] = useState(null); // { message, image, opponentCar?, wonCar?, lostCar? }
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [isLoadingCars, setIsLoadingCars] = useState(true);
+  const [isRacing, setIsRacing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const token = localStorage.getItem('token');
+  const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+
+  // --- Cooldown Logic ---
+  const startCooldown = useCallback((duration) => {
+    const endTime = Date.now() + duration * 1000;
+    localStorage.setItem('raceCooldownEnd', endTime);
+    setCooldownSeconds(duration);
+
+    const interval = setInterval(() => {
+      setCooldownSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          localStorage.removeItem('raceCooldownEnd');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Store interval ID to clear on unmount if needed
+    // (though typically it will clear itself)
+    return interval; // Optional: return interval ID
+  }, []);
 
   useEffect(() => {
-    fetchStolenCars();
     const cooldownEnd = parseInt(localStorage.getItem('raceCooldownEnd'), 10);
     if (cooldownEnd && Date.now() < cooldownEnd) {
       startCooldown(Math.ceil((cooldownEnd - Date.now()) / 1000));
     }
-  }, []);
+  }, [startCooldown]);
 
-  const fetchStolenCars = async () => {
-    const response = await fetch('/api/users/profile', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-    });
-    const data = await response.json();
-    if (data.success) setStolenCars(data.userData.cars || []);
+
+  // --- Data Fetching ---
+  const fetchStolenCars = useCallback(async () => {
+    if (!token || !user) return;
+    setIsLoadingCars(true);
+    setErrorMessage('');
+    try {
+      // Fetch profile to get cars array
+      const response = await axios.get(`${API_URL}/users/profile`, authHeader);
+      if (response.data.success) {
+        setStolenCars(response.data.userData.cars || []);
+      } else {
+        setErrorMessage('Failed to fetch your garage.');
+        console.error("Fetch cars error:", response.data.message);
+      }
+    } catch (error) {
+      setErrorMessage('Network error fetching garage.');
+      console.error("Fetch cars network error:", error);
+    } finally {
+      setIsLoadingCars(false);
+    }
+  }, [token, user]); // Depend on token/user
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchStolenCars();
+    } else {
+      setStolenCars([]);
+      setIsLoadingCars(false);
+    }
+  }, [isLoggedIn, fetchStolenCars]);
+
+  // --- API Calls for Race Outcome ---
+  const removeCarAPI = async (carName) => {
+      await axios.post(`${API_URL}/carraces/removeCar`, { carName }, authHeader);
+      // Re-fetch cars after removal
+      await fetchStolenCars();
   };
 
+  const addCarAPI = async (car) => {
+      await axios.post(`${API_URL}/carraces/addCar`, { car }, authHeader);
+       // Re-fetch cars after adding
+       await fetchStolenCars();
+  };
+
+  // --- Handle Race Logic ---
   const handleRace = async () => {
-    if (raceCooldown || !selectedCar) {
-      alert('Select a car and ensure no cooldown is active.');
+    if (cooldownSeconds > 0 || isRacing || !selectedCarName) {
+      setErrorMessage(cooldownSeconds > 0 ? 'Cooldown active!' : !selectedCarName ? 'Select a car first!' : '');
       return;
     }
-  
-    const playerCar = stolenCars.find(car => car.name === selectedCar);
+
+    setIsRacing(true);
+    setErrorMessage('');
+    setRaceResult(null); // Clear previous result
+
+    const playerCar = stolenCars.find(car => car.name === selectedCarName);
+    if (!playerCar) {
+        setErrorMessage('Selected car not found in your garage.');
+        setIsRacing(false);
+        return;
+    }
+
+    // Simple placeholder opponent generation
     const opponentCar = allCars[Math.floor(Math.random() * allCars.length)];
-  
-    const playerSpeed = playerCar.price / 1000 + Math.random() * 20;
-    const opponentSpeed = opponentCar.price / 1000 + Math.random() * 20;
-  
-    let message = '', image = '';
-  
+
+    // Simulate race outcome (based on simplified logic from original)
+    const playerSpeed = (playerCar.price || 500) / 1000 + Math.random() * 20; // Added default price
+    const opponentSpeed = (opponentCar.price || 500) / 1000 + Math.random() * 20;
+    const crashChance = 0.08; // 8% crash chance
+
+    // Add a short delay to simulate the race
+    await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second race simulation
+
+    let resultData = {
+        message: '',
+        image: '/assets/race7.png', // Default image
+        opponentCar: opponentCar,
+        playerCar: playerCar,
+        outcome: 'pending' // 'win', 'loss', 'crash'
+    };
+
     try {
-      if (Math.random() < 0.08) {
-        await removeCar(playerCar.name);
-        message = `Disaster! Your ${playerCar.name} crashed!`;
-        image = '/assets/race2.png';
+      if (Math.random() < crashChance) {
+        // --- Crash Outcome ---
+        await removeCarAPI(playerCar.name); // Call API to remove
+        resultData.message = `💥 DISASTER! Your ${playerCar.name} crashed and burned!`;
+        resultData.image = '/assets/race2.png'; // Crash image
+        resultData.outcome = 'crash';
+        resultData.lostCar = playerCar;
       } else if (playerSpeed > opponentSpeed) {
+        // --- Win Outcome ---
         const wonCar = allCars[Math.floor(Math.random() * allCars.length)];
-        await addCar(wonCar);
-        message = `You won! You took home a ${wonCar.name}.`;
-        image = '/assets/race6.png';
+        await addCarAPI(wonCar); // Call API to add
+        resultData.message = `🏆 VICTORY! You smoked the ${opponentCar.name} and won a ${wonCar.name}!`;
+        resultData.image = '/assets/race6.png'; // Win image
+        resultData.outcome = 'win';
+        resultData.wonCar = wonCar;
       } else {
-        await removeCar(playerCar.name);
-        message = `You lost your ${playerCar.name}!`;
-        image = '/assets/race8.png';
+        // --- Loss Outcome ---
+        await removeCarAPI(playerCar.name); // Call API to remove
+        resultData.message = `☠️ DEFEAT! The ${opponentCar.name} left your ${playerCar.name} in the dust! You lost your car.`;
+        resultData.image = '/assets/race8.png'; // Loss image
+        resultData.outcome = 'loss';
+        resultData.lostCar = playerCar;
       }
-  
-      setRaceResult({ message, image });
-      startCooldown(30);
-      setSelectedCar('');
+
+      setRaceResult(resultData);
+      startCooldown(30); // Start 30-second cooldown
+      setSelectedCarName(''); // Deselect car after race
+
     } catch (error) {
       console.error('Race error:', error);
-      alert('An error occurred during the race.');
+      setErrorMessage('An error occurred during the race API call.');
+      // Don't start cooldown on API error
+    } finally {
+        setIsRacing(false);
     }
   };
-  
 
-  const startCooldown = duration => {
-    setRaceCooldown(true);
-    setCooldownMessage(`You have too much heat on you dawg, lay low for ${duration} seconds.`);
-    const interval = setInterval(() => {
-      duration -= 1;
-      setCooldownMessage(`You have too much heat on you dawg, lay low for ${duration} seconds.`);
-      if (duration <= 0) {
-        clearInterval(interval);
-        setRaceCooldown(false);
-        setCooldownMessage('');
-        localStorage.removeItem('raceCooldownEnd');
-      }
-    }, 1000);
-    localStorage.setItem('raceCooldownEnd', Date.now() + duration * 1000);
-  };
 
-  const removeCar = async name => {
-    await fetch('/api/carraces/removeCar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify({ carName: name }),
-    });
-    fetchStolenCars();
-  };
+  // --- Render ---
+  if (authLoading) { return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">Loading Session...</div>; }
+  if (!isLoggedIn) { return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">Please log in to access Car Races.</div>; }
 
-  const addCar = async car => {
-    await fetch('/api/carraces/addCar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify({ car }),
-    });
-    fetchStolenCars();
-  };
+  const selectedCarObject = stolenCars.find(c => c.name === selectedCarName);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white py-20">
-      <div className="container mx-auto px-6 py-12 md:flex md:gap-8">
-
-        {/* Left Side: Interaction */}
-        <div className="md:w-1/2 space-y-6">
-          <h1 className="text-4xl font-bold text-yellow-400">Underground Car Races</h1>
-          <p className="text-gray-400">
-            Enter the dangerous world of underground racing. Win, and you’ll ride home richer. Lose, and you'll walk home empty-handed.
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-indigo-900 to-black text-white pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+      <div className="container mx-auto max-w-7xl">
+        {/* Header */}
+        <div className="text-center mb-10 md:mb-12">
+           <FaFlagCheckered className="mx-auto text-6xl text-yellow-400 mb-4 animate-pulse" />
+           <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-red-500 mb-2">
+            Underground Races
+          </h1>
+          <p className="text-lg text-gray-400 italic">
+            "Risk your ride for riches and glory. Winner takes all... sometimes."
           </p>
+        </div>
 
-          {cooldownMessage && <p className="bg-red-800 p-3 rounded">{cooldownMessage}</p>}
-          {raceResult && <p className="bg-gray-800 p-3 rounded">{raceResult.message}</p>}
+         {/* Message Area */}
+         <div className="h-8 mb-6 max-w-lg mx-auto text-center">
+            {errorMessage && (<div className="p-2 bg-red-500/80 text-white rounded-lg shadow-md flex items-center justify-center animate-fade-in text-sm"><FaTimesCircle className="mr-2 flex-shrink-0" /> {errorMessage}</div>)}
+         </div>
 
-          {/* Car Selection */}
-          <div className="bg-gray-800 rounded-lg p-4">
-            <label className="block mb-2">Select Your Car:</label>
-            <select
-              className="w-full p-2 rounded bg-gray-700"
-              value={selectedCar}
-              onChange={e => setSelectedCar(e.target.value)}
-            >
-              <option value="">Choose a car</option>
-              {stolenCars.map((car, i) => (
-                <option key={i} value={car.name}>{car.name}</option>
-              ))}
-            </select>
+        {/* Main Content Area */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+
+          {/* Left Side: Garage & Selection */}
+          <div className="bg-gray-800/60 backdrop-blur-md rounded-xl shadow-xl p-6 border border-gray-700/50 space-y-6">
+             <h2 className="text-2xl font-semibold text-purple-300 border-b border-gray-700 pb-2 mb-4">Select Your Racer</h2>
+             {isLoadingCars ? (
+                <div className="text-center py-10 text-gray-400">Loading Garage...</div>
+             ) : stolenCars.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto pr-2">
+                    {stolenCars.map((car, i) => (
+                        <button
+                            key={car._id || i}
+                            onClick={() => setSelectedCarName(car.name)}
+                            disabled={isRacing || cooldownSeconds > 0}
+                            className={`p-3 rounded-lg bg-gray-700/70 border-2 transition duration-200 ease-in-out focus:outline-none ${
+                                selectedCarName === car.name
+                                    ? 'border-yellow-400 ring-2 ring-yellow-400/50 shadow-lg scale-105' // Selected style
+                                    : 'border-gray-600 hover:border-purple-500' // Default style
+                            } ${isRacing || cooldownSeconds > 0 ? 'opacity-50 cursor-not-allowed filter grayscale' : ''}`}
+                            title={`Select ${car.name}`}
+                        >
+                            <img
+                                src={car.image || '/assets/default.png'}
+                                alt={car.name}
+                                className="w-full h-24 object-contain mb-2 rounded"
+                                loading="lazy"
+                                onError={(e) => { e.target.onerror = null; e.target.src='/assets/default.png'; }}
+                            />
+                            <p className="text-sm font-medium text-gray-200 truncate">{car.name}</p>
+                             <p className="text-xs text-green-400">${(car.price || 0).toLocaleString()}</p>
+                        </button>
+                    ))}
+                </div>
+             ) : (
+                <p className="text-center py-10 text-gray-400 italic">Your garage is empty! Steal some cars first.</p>
+             )}
           </div>
 
-          <button
-            onClick={handleRace}
-            disabled={raceCooldown || !selectedCar}
-            className="w-full py-3 rounded font-bold bg-yellow-500 hover:bg-yellow-400 text-black"
-          >
-            Start Race
-          </button>
+          {/* Right Side: Race Hub */}
+          <div className="bg-gray-800/60 backdrop-blur-md rounded-xl shadow-xl p-6 border border-gray-700/50 space-y-6 flex flex-col items-center">
+             <h2 className="text-2xl font-semibold text-yellow-400 mb-4">Race Hub</h2>
 
-          {raceResult && (
-  <div className="mt-6 bg-gray-800 rounded-xl shadow-lg overflow-hidden p-4 flex flex-col items-center justify-center">
-    <img
-      src={raceResult.image}
-      alt="Race Outcome"
-      className="w-full max-w-md object-cover rounded-lg shadow-md mb-4"
-    />
-    <p className="text-center text-xl font-semibold text-gray-100">
-      {raceResult.message}
-    </p>
-  </div>
-)}
+             {/* --- Race Visualization Area --- */}
+             <div className="w-full bg-gray-700/50 rounded-lg p-4 min-h-[250px] flex flex-col items-center justify-center text-center shadow-inner">
+                 {raceResult ? (
+                     // Display Race Result
+                     <div className="animate-fade-in space-y-4">
+                         <img src={raceResult.image} alt="Race Outcome" className="w-full max-w-xs sm:max-w-sm object-contain rounded-lg shadow-md mx-auto"/>
+                         <p className={`text-xl font-semibold ${
+                            raceResult.outcome === 'win' ? 'text-green-400' :
+                            raceResult.outcome === 'crash' ? 'text-orange-500' : 'text-red-500'
+                         }`}>{raceResult.message}</p>
+                         {raceResult.opponentCar && <p className="text-sm text-gray-400">Opponent drove: {raceResult.opponentCar.name}</p>}
+                     </div>
+                 ) : selectedCarObject ? (
+                    // Display Selected Car vs Placeholder
+                    <div className="flex flex-col sm:flex-row items-center justify-around w-full gap-4">
+                         <div className="text-center">
+                             <img src={selectedCarObject.image || '/assets/default.png'} alt="Your Car" className="w-32 h-24 sm:w-40 sm:h-32 object-contain mb-2 animate-pulse-slow"/>
+                             <p className="text-lg font-semibold text-gray-200">{selectedCarObject.name}</p>
+                             <p className="text-sm text-green-400">Your Racer</p>
+                         </div>
+                         <p className="text-4xl font-bold text-gray-500 animate-bounce">VS</p>
+                          <div className="text-center opacity-70">
+                             <img src="/assets/mashy.png" alt="Opponent Placeholder" className="w-32 h-24 sm:w-40 sm:h-32 object-contain mb-2"/>
+                             <p className="text-lg font-semibold text-gray-400">???</p>
+                             <p className="text-sm text-gray-500">Rival</p>
+                         </div>
+                    </div>
+                 ) : (
+                     // Prompt to select car
+                     <p className="text-gray-400 text-lg">Select a car from your garage to race!</p>
+                 )}
+             </div>
+              {/* --- End Race Visualization Area --- */}
+
+
+             {/* Race Button & Cooldown */}
+             <div className="w-full pt-4">
+                 {cooldownSeconds > 0 ? (
+                     <div className="w-full text-center p-3 rounded-lg bg-red-800/50 border border-red-600/50 text-red-300 font-semibold">
+                         <FaClock className="inline mr-2 animate-spin-slow" />
+                         Cooldown: {cooldownSeconds}s remaining
+                     </div>
+                 ) : (
+                     <button
+                        onClick={handleRace}
+                        disabled={isRacing || !selectedCarName || cooldownSeconds > 0}
+                        className={`w-full py-3 px-6 rounded-lg text-lg font-bold text-white transition duration-300 ease-in-out flex items-center justify-center gap-2 shadow-lg transform hover:scale-105 ${
+                            isRacing || !selectedCarName || cooldownSeconds > 0
+                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600'
+                        }`}
+                    >
+                        {isRacing ? (
+                            <> <FaSpinner className="animate-spin" /> Racing... </>
+                        ) : (
+                             <> <FaFlagCheckered /> Start Race! </>
+                        )}
+                    </button>
+                 )}
+             </div>
+
+             {/* Display error if car not selected and trying to race */}
+              {!isRacing && !selectedCarName && cooldownSeconds <= 0 && (
+                 <p className="text-center text-yellow-400 text-sm mt-2 flex items-center justify-center gap-1"><FaExclamationTriangle/> Select a car first!</p>
+              )}
+          </div>
+
         </div>
-
-        {/* Right Side: Big Race Image */}
-        <div className="">
-          <img
-            src="/assets/race7.png"
-            alt="Racing Scene"
-            className="rounded-xl shadow-xl"
-          />
-        </div>
-
       </div>
     </div>
   );

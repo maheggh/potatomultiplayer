@@ -1,53 +1,65 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { FaUserPlus, FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
+import { FaUserPlus, FaCheckCircle, FaTimesCircle } from 'react-icons/fa'; // Removed unused icons
+import axios from 'axios';
+
+// Ensure this points to your backend API (adjust if needed)
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const Register = () => {
-  const { login, isLoggedIn } = useContext(AuthContext);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
-  const navigate = useNavigate();
+  const { login } = useContext(AuthContext); // Get the login function from context
+  const [message, setMessage] = useState(null); // For success/error feedback
+  const [isRegistering, setIsRegistering] = useState(false); // Loading state for the button
+  const navigate = useNavigate(); // Hook for navigation
 
-  useEffect(() => {
-    if (isLoggedIn) navigate('/');
-  }, [isLoggedIn, navigate]);
-
+  // Function to handle the registration process
   const registerUser = async () => {
-    setIsRegistering(true);
+    setIsRegistering(true); // Set loading state
+    setMessage(null); // Clear any previous messages
+
     try {
-      const response = await fetch('/api/users/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
+      // Send POST request to the registration endpoint (empty body for generation)
+      const response = await axios.post(`${API_URL}/users/register`, {});
+      const data = response.data; // Axios puts response data in .data
+      console.log("Register Response Data:", data); // Log backend response
 
-      const data = await response.json();
-
+      // Check if the backend reported success
       if (data.success) {
-        setUsername(data.userData.username);
-        setPassword(data.userData.password);
-        localStorage.setItem('password', data.userData.password);
-        setMessage({ type: 'success', text: 'User registered successfully!' });
+        // Set a temporary success message before redirecting
+        setMessage({ type: 'success', text: 'Account generated successfully! Redirecting...' });
 
+        // Extract the generated password if it exists in the response
+        const generatedPassword = data.userData?.generatedPassword;
+        console.log("Generated password to pass to login:", generatedPassword); // Log the password being passed
+
+        // Check if a login token was received
         if (data.token) {
-          await login(data.token, data.userData.password);
-          setTimeout(() => {
-            setUsername('');
-            setPassword('');
-            navigate('/');
-          }, 2000);
+          // Call the login function from AuthContext, passing the token
+          // AND the generated password (it will be stored in localStorage temporarily)
+          await login(data.token, generatedPassword);
+          console.log("Login successful after registration, navigating to /");
+          navigate('/'); // <<< NAVIGATE TO HOME PAGE immediately after login
+        } else {
+          // Handle case where registration succeeded but no token was sent
+          setMessage({ type: 'error', text: 'Registration succeeded but no login token received.' });
+          setIsRegistering(false); // Stop loading if there's no token to proceed
         }
+        // No need to set isRegistering false here if navigation happens
+
       } else {
-        setMessage({ type: 'error', text: data.message });
+        // Handle registration failure reported by the backend
+        setMessage({ type: 'error', text: data.message || 'Registration failed.' });
+        setIsRegistering(false); // Stop loading on failure
       }
     } catch (error) {
-      setMessage({ type: 'error', text: 'Error registering user' });
-    } finally {
-      setIsRegistering(false);
+       // Handle network errors or unexpected issues
+       console.error("Error registering user:", error);
+       // Try to get a specific error message from the backend response, or show a generic one
+       setMessage({ type: 'error', text: error.response?.data?.message || 'Error registering user. Network or server issue.' });
+       setIsRegistering(false); // Stop loading on error
     }
+    // No 'finally' needed as success leads to navigation, and errors/failures set isRegistering false
   };
 
   return (
@@ -56,28 +68,32 @@ const Register = () => {
         <FaUserPlus className="mr-2" /> Join the Potato Mafia
       </h2>
 
+      {/* The button to trigger registration */}
       <button
         onClick={registerUser}
-        disabled={isRegistering}
-        className="bg-purple-700 hover:bg-purple-800 text-white font-semibold py-3 px-4 rounded-md transition duration-200 w-full"
+        disabled={isRegistering} // Disable button while processing
+        className={`w-full font-semibold py-3 px-4 rounded-md transition duration-200 flex items-center justify-center ${
+            isRegistering
+                ? 'bg-gray-600 cursor-not-allowed' // Style for disabled state
+                : 'bg-purple-700 hover:bg-purple-800 text-white' // Style for active state
+        }`}
       >
-        {isRegistering ? 'Registering...' : 'Generate Random Gangster Name'}
+        {isRegistering ? (
+            // Show spinner and text when loading
+            <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Generating Account...
+            </>
+        ) : (
+            // Default button text
+            'Click for Instant Gangster Account'
+        )}
       </button>
 
-      {username && password && (
-        <div className="p-4 bg-green-100 border border-green-400 rounded-md text-gray-800">
-          <div className="flex items-center mb-2">
-            <FaCheckCircle className="text-green-600 mr-2" />
-            <strong>Registration Successful!</strong>
-          </div>
-          <p><strong>Username:</strong> {username}</p>
-          <p><strong>Password:</strong> {password}</p>
-          <p className="text-sm text-red-500 font-semibold mt-2">
-            ⚠️ Save this password now. You won’t see it again.
-          </p>
-        </div>
-      )}
-
+      {/* Area to display general success or error messages */}
       {message && (
         <div className={`p-4 rounded-md flex items-center ${
           message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'

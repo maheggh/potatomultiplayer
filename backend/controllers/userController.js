@@ -1,323 +1,172 @@
-// controllers/userController.js
-
+// backend/controllers/userController.js
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { generateRandomGangsterName, generateRandomPassword } = require('../utils/nameGenerator');
 const { getRankForXp } = require('../utils/rankCalculator');
 
-exports.registerUser = async (req, res) => {
+exports.registerUser = async (req, res, next) => {
   try {
-    let { username, password } = req.body;
+    let { username } = req.body;
+    let password = req.body.password; // Get potential user-provided password
+    let generatedPassword = null; // Track if we generated one
 
     if (!username) {
       username = generateRandomGangsterName();
     }
     if (!password) {
       password = generateRandomPassword();
+      generatedPassword = password; // Store the generated password to return it
+    }
+
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+        return res.status(400).json({ success: false, message: 'Username already taken' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const rankInfo = getRankForXp(0);
     const newUser = new User({
-      username,
-      password: hashedPassword,
-      isAlive: true,
-      xp: 0,
-      rank: 'Homeless Potato',
-      money: 0, 
-      cars: [],
-      stolenItems: [],
-      inventory: [],
-      bossItems: [],
-      kills: 0,
+      username, password: hashedPassword, isAlive: true, xp: 0,
+      rank: rankInfo.currentRank, money: 0, cars: [], stolenItems: [],
+      inventory: [], bossItems: [], kills: 0, level: 1,
     });
 
     await newUser.save();
-
     const token = jwt.sign({ userId: newUser._id.toString() }, process.env.TOKEN_SECRET, { expiresIn: '24h' });
 
-    res.status(201).json({
-      success: true,
-      token,
-      userData: {
-        userId: newUser._id.toString(),
-        username: newUser.username,
-        money: newUser.money,       // <-- Important: Include money here
-        isAlive: newUser.isAlive,   // also recommended
-        xp: newUser.xp,             // recommended
-        rank: newUser.rank,         // recommended
-        kills: newUser.kills,       // recommended
-        password,
-        message: 'User registered successfully',
-      },
-    });
+    // Prepare response data
+    const responseData = {
+        success: true,
+        token,
+        userData: {
+            userId: newUser._id.toString(),
+            username: newUser.username, // Return the definite username
+            // Basic stats are good here too
+            money: newUser.money,
+            isAlive: newUser.isAlive,
+            xp: newUser.xp,
+            rank: newUser.rank,
+            kills: newUser.kills,
+        },
+    };
+
+    // ** Conditionally add generatedPassword to the response **
+    if (generatedPassword) {
+        responseData.userData.generatedPassword = generatedPassword;
+    }
+
+    res.status(201).json(responseData);
+
   } catch (error) {
-    console.error('Error registering user:', error);
-    res.status(500).json({ message: 'Failed to register user' });
+    if (error.code === 11000) {
+        return res.status(400).json({ success: false, message: 'Username already exists.' });
+    }
+    next(error);
   }
 };
 
+// --- loginUser, getUserProfile, updateUserData, getTargets remain the same ---
 
-exports.loginUser = async (req, res) => {
+exports.loginUser = async (req, res, next) => {
   try {
     const { username, password } = req.body;
-
     const user = await User.findOne({ username });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ success: false, message: 'Invalid credentials' });
-    }
-
-    // Convert ObjectId to string when generating token
-    const token = jwt.sign({ userId: user._id.toString() }, process.env.TOKEN_SECRET, {
-      expiresIn: '1h',
-    });
-
+    if (!isMatch) return res.status(400).json({ success: false, message: 'Invalid credentials' });
+    const token = jwt.sign({ userId: user._id.toString() }, process.env.TOKEN_SECRET, { expiresIn: '24h' });
     res.json({
-      success: true,
-      token,
+      success: true, token,
       userData: {
-        userId: user._id.toString(),
-        username: user.username,
-        money: user.money,
-        cars: user.cars,
-        stolenItems: user.stolenItems,
-        inventory: user.inventory,
-        bossItems: user.bossItems,
-        xp: user.xp,
-        rank: user.rank,
-        isAlive: user.isAlive,
-        kills: user.kills,
+        userId: user._id.toString(), username: user.username, money: user.money,
+        xp: user.xp, rank: user.rank, isAlive: user.isAlive, kills: user.kills, level: user.level,
       },
     });
   } catch (error) {
-    console.error('Error logging in user:', error);
-    res.status(500).json({ success: false, message: 'Failed to login user' });
+     next(error);
   }
 };
 
-exports.getUserData = async (req, res) => {
-  try {
-    const userId = req.user.userId; // Access userId from req.user
-    const user = await User.findById(userId).select('-password'); // Exclude password
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    // Calculate the rank and next rank details
-    const rankInfo = getRankForXp(user.xp);
-
-    res.json({
-      success: true,
-      userData: {
-        userId: user._id.toString(),
-        username: user.username,
-        money: user.money,
-        cars: user.cars,
-        stolenItems: user.stolenItems,
-        inventory: user.inventory,
-        bossItems: user.bossItems,
-        xp: user.xp,
-        rank: rankInfo.currentRank,
-        nextRank: rankInfo.nextRank,
-        nextRankThreshold: rankInfo.nextRankThreshold,
-        currentRankThreshold: rankInfo.currentRankThreshold,
-        isAlive: user.isAlive,
-        kills: user.kills,
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching user data:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch user data' });
-  }
-};
-
-exports.updateUserData = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const updatedData = req.body;
-
-    // Validate and sanitize updatedData as needed
-    const allowedUpdates = ['money', 'inJail', 'jailTimeEnd', 'xp', 'rank', 'isAlive', 'kills', 'cars', 'stolenItems', 'inventory', 'bossItems'];
-    const updates = {};
-
-    allowedUpdates.forEach((field) => {
-      if (field in updatedData) {
-        updates[field] = updatedData[field];
-      }
-    });
-
-    // Update the user data
-    const user = await User.findByIdAndUpdate(userId, updates, { new: true });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    res.json({ success: true, message: 'User data updated', user });
-  } catch (error) {
-    console.error('Error updating user data:', error);
-    res.status(500).json({ success: false, message: 'Failed to update user data', error: error.message });
-  }
-};
-
-exports.getUserProfile = async (req, res) => {
+exports.getUserProfile = async (req, res, next) => {
   try {
     const userId = req.user.userId;
     const user = await User.findById(userId).select('-password');
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    // Calculate the rank and next rank details
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
     const rankInfo = getRankForXp(user.xp);
-
     res.json({
       success: true,
       userData: {
-        userId: user._id.toString(),
-        username: user.username,
-        money: user.money,
-        cars: user.cars,
-        stolenItems: user.stolenItems,
-        inventory: user.inventory,
-        bossItems: user.bossItems,
-        xp: user.xp,
-        rank: getRankForXp(user.xp).currentRank,
-        kills: user.kills,
-        nextRank: rankInfo.nextRank,
-        nextRankThreshold: rankInfo.nextRankThreshold,
-        currentRankThreshold: rankInfo.currentRankThreshold,
-        isAlive: user.isAlive,
+        userId: user._id.toString(), username: user.username, money: user.money,
+        cars: user.cars || [], stolenItems: user.stolenItems || [],
+        inventory: user.inventory || [], bossItems: user.bossItems || [],
+        xp: user.xp, rank: rankInfo.currentRank, nextRank: rankInfo.nextRank,
+        nextRankThreshold: rankInfo.nextRankThreshold, currentRankThreshold: rankInfo.currentRankThreshold,
+        isAlive: user.isAlive, kills: user.kills, level: user.level,
+        lastAssassinationAttempt: user.lastAssassinationAttempt,
       },
     });
   } catch (error) {
-    console.error('Error fetching user profile:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch user data' });
+     next(error);
   }
 };
 
-exports.startJailTime = async (user, jailDurationInSeconds) => {
-  user.inJail = true;
-  const jailTimeEnd = Date.now() + jailDurationInSeconds * 1000; // Store the future release time in milliseconds
-  user.jailTimeEnd = jailTimeEnd;
-  await user.save();
-};
-
-exports.getJailTime = async (req, res) => {
+exports.updateUserData = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    if (!user.inJail) {
-      return res.status(200).json({ inJail: false, message: 'User is not in jail' });
-    }
-
-    const jailTimeLeft = Math.max(0, user.jailTimeEnd - Date.now());
-    if (jailTimeLeft > 0) {
-      return res.status(200).json({
-        inJail: true,
-        jailTime: Math.ceil(jailTimeLeft / 1000), // Return time in seconds
-      });
-    } else {
-      // Release user if jail time is up
-      user.inJail = false;
-      user.jailTimeEnd = null;
-      await user.save();
-      return res.status(200).json({ inJail: false, message: 'User has been released from jail' });
-    }
-  } catch (error) {
-    console.error('Error fetching jail time:', error.message);
-    return res.status(500).json({
-      message: 'Server error fetching jail time',
-      error: error.message,
+    const updatedData = req.body;
+    const allowedUpdates = [
+        'money', 'xp', 'isAlive', 'kills', 'cars', 'stolenItems',
+        'inventory', 'bossItems', 'lastAssassinationAttempt', 'level'
+    ];
+    const updates = {};
+    let requiresRankUpdate = false;
+    allowedUpdates.forEach((field) => {
+      if (updatedData.hasOwnProperty(field)) {
+        if (field === 'money' && (typeof updatedData[field] !== 'number' || updatedData[field] < 0)) return;
+        if (field === 'xp' && (typeof updatedData[field] !== 'number' || updatedData[field] < 0)) return;
+        if (field === 'level' && (typeof updatedData[field] !== 'number' || updatedData[field] < 1)) return;
+        if (field === 'kills' && (typeof updatedData[field] !== 'number' || updatedData[field] < 0)) return;
+        if (field === 'isAlive' && typeof updatedData[field] !== 'boolean') return;
+        if ((field === 'cars' || field === 'stolenItems' || field === 'inventory' || field === 'bossItems') && !Array.isArray(updatedData[field])) return;
+        updates[field] = updatedData[field];
+        if (field === 'xp') requiresRankUpdate = true;
+      }
     });
-  }
-};
-
-exports.updateMoney = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { money } = req.body;
-
-    const user = await User.findById(userId);
-
-    if (money < 0) {
-      return res.status(400).json({ success: false, message: 'Money cannot be negative.' });
+    if (requiresRankUpdate) {
+        updates.rank = getRankForXp(updates.xp).currentRank;
     }
-
-    user.money = money;
-    await user.save();
-
-    res.status(200).json({ success: true, money: user.money });
-  } catch (error) {
-    console.error('Error updating money:', error);
-    res.status(500).json({ success: false, message: 'Server error updating money' });
-  }
-};
-
-exports.getTargets = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const users = await User.find({ _id: { $ne: userId }, isAlive: true }).select('username level xp _id');
-
-    if (!users || users.length === 0) {
-      return res.status(200).json({ success: true, targets: [], message: 'No valid targets available.' });
+    if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ success: false, message: 'No valid fields provided for update.' });
     }
-
-    res.status(200).json({ success: true, targets: users });
+    const user = await User.findByIdAndUpdate(userId, { $set: updates }, { new: true, runValidators: true }).select('-password');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    const rankInfo = getRankForXp(user.xp);
+    res.json({
+        success: true,
+        message: 'User data updated successfully',
+        userData: {
+            userId: user._id.toString(), username: user.username, money: user.money,
+            cars: user.cars || [], stolenItems: user.stolenItems || [],
+            inventory: user.inventory || [], bossItems: user.bossItems || [],
+            xp: user.xp, rank: rankInfo.currentRank, nextRank: rankInfo.nextRank,
+            nextRankThreshold: rankInfo.nextRankThreshold, currentRankThreshold: rankInfo.currentRankThreshold,
+            isAlive: user.isAlive, kills: user.kills, level: user.level,
+            lastAssassinationAttempt: user.lastAssassinationAttempt,
+        }
+    });
   } catch (error) {
-    console.error('Error fetching targets:', error);
-    res.status(500).json({ success: false, message: 'Error fetching targets' });
+     next(error);
   }
 };
 
-
-exports.updateBossItems = async (req, res) => {
-  const { bossItems } = req.body;
-
+exports.getTargets = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Update the user's boss items
-    user.bossItems = bossItems;
-
-    // Save the user data
-    await user.save();
-
-    res.json({ message: 'Boss items updated successfully', bossItems: user.bossItems });
+    const users = await User.find({ _id: { $ne: userId }, isAlive: true })
+                            .select('username level xp rank _id');
+    res.status(200).json({ success: true, targets: users || [] });
   } catch (error) {
-    console.error('Error updating boss items:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-exports.updateXP = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { xp } = req.body;
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    user.xp = xp;
-    // Optionally update rank based on XP
-    user.rank = getRankForXp(xp).currentRank;
-
-    await user.save();
-    res.status(200).json({ message: 'XP updated successfully', xp: user.xp, rank: user.rank });
-  } catch (error) {
-    console.error('Error updating XP:', error);
-    res.status(500).json({ message: 'Server error updating XP' });
+     next(error);
   }
 };
