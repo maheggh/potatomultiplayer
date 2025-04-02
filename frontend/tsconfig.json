@@ -1,13 +1,16 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "module": "commonjs",
+    "module": "commonjs", // Consider "esnext" if this is for Vite/Webpack frontend bundling
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "allowJs": true  // Allow JavaScript files to be compiled by TypeScript
+    "allowJs": true,
+    // --- ADD THIS LINE ---
+    "outDir": "./dist", // Specify an output directory (e.g., 'dist')
+    "rootDir": "./src" // Often good practice to specify source root explicitly
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*"], // Include everything in src
+  "exclude": ["node_modules", "dist"] // Exclude node_modules AND the output directory
 }

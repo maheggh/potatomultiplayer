@@ -60,7 +60,7 @@ const RankNavbar = () => {
                 </button>
             </div>
 
-            {/* Expandable Content Area */}
+            {/* Expandable Content Areas1 */}
             <div
                 id="rank-details"
                 className={`transition-all duration-300 ease-in-out overflow-hidden ${isExpanded ? 'max-h-40 opacity-100 pt-3' : 'max-h-0 opacity-0'}`}
