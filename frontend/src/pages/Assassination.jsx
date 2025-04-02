@@ -212,6 +212,8 @@ const AssassinationPage = () => {
        setScenarioImage('/assets/error.png');
     } finally {
       setIsLoading(false);
+      setSelectedBossItemName(''); // Reset dropdown selection
+      setSelectedBossItemInfo(null); // Clear the displayed info box
     }
   };
 
