@@ -1,46 +1,54 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+// File: components/assassination/AssassinationPage.jsx
+
+import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
+import {
+  FaUserSecret, FaSkull, FaCrosshairs, FaSpinner, 
+  FaCheckCircle, FaTimesCircle, FaClock
+} from 'react-icons/fa';
+
+import TargetSelection from '../components/assassination/TargetSelection';
+import WeaponSelection from '../components/assassination/WeaponSelection';
+import SpecialItemSelection from '../components/assassination/SpecialItemSelection';
+import AmmunitionSection from '../components/assassination/AmmunitionSelection';
+import AssassinationZone from '../components/assassination/AssassinationZone';
+import DeadView from '../components/assassination/DeadView';
+import { BOSS_ITEM_STATS } from '../components/assassination/constants';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
-
-const BOSS_ITEM_STATS = {
-  'Presidential Medal': { description: '+5% Success Chance, +50% XP Gain', image: '/assets/presidential-medal.png' },
-  "Dragon's Hoard": { description: '+10% Success Chance, +50% Loot Multiplier', image: '/assets/dragon-hoard.png' },
-  'Mafia Ring': { description: '+15% Success Chance, -10% Retaliation Chance', image: '/assets/mafia-fortune.png' },
-  'Invisible Cloak': { description: 'Prevents Retaliation', image: '/assets/invisible-cloak.png' },
-  "Pirate's Compass": { description: '+300 Flat XP Bonus', image: '/assets/pirate-compass.png' },
-  'Golden Spatula': { description: '+20% Success Chance, Bullets Cost $0', image: '/assets/golden-spatula.png' },
-  'Star Dust': { description: '+25% Success Chance, +25% XP Gain', image: '/assets/star-dust.png' },
-  "Sheriff's Badge": { description: 'Prevents Retaliation', image: '/assets/sheriffs-badge.png' },
-};
 
 const AssassinationPage = () => {
   const { user, money, inventory, bossItems, xp, kills, isAlive, updateUserData } = useContext(AuthContext);
 
+  // State variables
   const [targets, setTargets] = useState([]);
   const [selectedTargetId, setSelectedTargetId] = useState('');
+  const [selectedTargetInfo, setSelectedTargetInfo] = useState(null);
   const [selectedWeaponName, setSelectedWeaponName] = useState('');
+  const [selectedWeaponInfo, setSelectedWeaponInfo] = useState(null);
   const [selectedBossItemName, setSelectedBossItemName] = useState('');
   const [selectedBossItemInfo, setSelectedBossItemInfo] = useState(null);
   const [resultMessage, setResultMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [scenarioImage, setScenarioImage] = useState('/assets/assassination.png');
+  const [bulletsUsed, setBulletsUsed] = useState(1);
+  const [bulletInputValue, setBulletInputValue] = useState('1');
   const [cooldown, setCooldown] = useState(0);
-  const [bulletsUsed, setBulletsUsed] = useState(1); // Validated number
-  const [bulletInputValue, setBulletInputValue] = useState('1'); // Raw input string
+  const [successChance, setSuccessChance] = useState(0);
+  const [retaliationChance, setRetaliationChance] = useState(0);
+  const [showResults, setShowResults] = useState(false);
+  const [animationState, setAnimationState] = useState('idle');
 
   const COOLDOWN_TIME_MS = 60 * 1000;
-
   const availableWeapons = inventory.filter(item => item.attributes?.accuracy > 0);
   const uniqueBossItems = bossItems.reduce((acc, current) => {
-      if (!acc.find(item => item.name === current.name)) {
-          acc.push(current);
-      }
-      return acc;
+    if (!acc.find(item => item.name === current.name)) {
+      acc.push(current);
+    }
+    return acc;
   }, []);
-
 
   useEffect(() => {
     const fetchTargets = async () => {
@@ -48,12 +56,12 @@ const AssassinationPage = () => {
       setErrorMessage('');
       const token = localStorage.getItem('token');
       if (!token) {
-          setErrorMessage("Not logged in.");
-          setIsLoading(false);
-          return;
+        setErrorMessage("Not logged in.");
+        setIsLoading(false);
+        return;
       }
       try {
-        const response = await axios.get(`${API_URL}/users/targets`, {
+        const response = await axios.get(`${API_URL}/assassination/targets`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.data.success) {
@@ -68,26 +76,39 @@ const AssassinationPage = () => {
         console.error("Error fetching targets:", error)
         setErrorMessage(error.response?.data?.message || 'Server error occurred while fetching targets.');
       } finally {
-          setIsLoading(false);
+        setIsLoading(false);
       }
     };
+
+    const checkCooldown = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      try {
+        const response = await axios.get(`${API_URL}/assassination/cooldown`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.data.success && response.data.onCooldown) {
+          setCooldown(response.data.cooldownRemaining * 1000);
+        }
+      } catch (error) {
+        console.error("Error checking cooldown:", error);
+      }
+    };
+
     if (isAlive) {
       fetchTargets();
+      checkCooldown();
     } else {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   }, [isAlive]);
 
   useEffect(() => {
-    const lastAttemptTime = parseInt(localStorage.getItem('lastAssassinationAttempt') || '0', 10);
-    const now = Date.now();
-    const timePassed = now - lastAttemptTime;
-    const remainingCooldown = COOLDOWN_TIME_MS - timePassed;
-
     let intervalId = null;
 
-    if (remainingCooldown > 0) {
-      setCooldown(remainingCooldown);
+    if (cooldown > 0) {
       intervalId = setInterval(() => {
         setCooldown(prev => {
           const newCooldown = prev - 1000;
@@ -98,80 +119,254 @@ const AssassinationPage = () => {
           return newCooldown;
         });
       }, 1000);
-    } else {
-        setCooldown(0);
     }
 
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [resultMessage, errorMessage]);
+  }, [cooldown]);
+
+  useEffect(() => {
+    let timer;
+    if (errorMessage || resultMessage) {
+      timer = setTimeout(() => {
+        if (errorMessage) setErrorMessage('');
+        if (resultMessage) setResultMessage('');
+      }, 8000);
+    }
+    return () => clearTimeout(timer);
+  }, [errorMessage, resultMessage]);
+
+  useEffect(() => {
+    if (selectedTargetId) {
+      const target = targets.find(t => t._id === selectedTargetId);
+      if (target) {
+        setSelectedTargetInfo(target);
+      } else {
+        setSelectedTargetInfo(null);
+      }
+    } else {
+      setSelectedTargetInfo(null);
+    }
+  }, [selectedTargetId, targets]);
+
+  useEffect(() => {
+    if (selectedWeaponName) {
+      const weapon = availableWeapons.find(w => w.name === selectedWeaponName);
+      if (weapon) {
+        setSelectedWeaponInfo(weapon);
+      } else {
+        setSelectedWeaponInfo(null);
+      }
+    } else {
+      setSelectedWeaponInfo(null);
+    }
+  }, [selectedWeaponName, availableWeapons]);
+
+  // Success and retaliation chance calculation
+  useEffect(() => {
+    if (selectedWeaponInfo && selectedTargetInfo) {
+      // Get weapon base accuracy (as a percentage of 1)
+      const baseAccuracy = selectedWeaponInfo.attributes.accuracy / 100;
+      
+      // Calculate bullet bonus with diminishing returns
+      let bulletBonus = 0;
+      if (bulletsUsed <= 10) {
+        // Linear bonus for first 10 bullets (each bullet adds 3% up to 30%)
+        bulletBonus = (bulletsUsed * 0.03);
+      } else {
+        // Base 30% from first 10 bullets
+        // Additional bullets follow logarithmic scaling
+        bulletBonus = 0.3 + (Math.log(bulletsUsed - 9) * 0.05);
+      }
+      
+      // Cap bullet bonus at 60%
+      bulletBonus = Math.min(0.6, bulletBonus);
+      
+      // Apply target difficulty based on level difference
+      const targetLevel = selectedTargetInfo.level || 1;
+      const userLevel = user?.level || 1;
+      const levelDifference = targetLevel - userLevel;
+      
+      // Calculate target difficulty
+      let targetDifficulty = 1;
+      if (levelDifference > 0) {
+        // Each level above gives 15% penalty
+        targetDifficulty = 1 + (levelDifference * 0.15);
+      } else if (levelDifference < 0) {
+        // Each level below gives 5% bonus
+        targetDifficulty = Math.max(0.5, 1 + (levelDifference * 0.05));
+      }
+      
+      // Calculate success chance including bulletBonus
+      let calculatedSuccessChance = (baseAccuracy + bulletBonus) / targetDifficulty;
+      
+      // Apply boss item bonus effects
+      let bossItemBonus = 0;
+      if (selectedBossItemInfo) {
+        if (selectedBossItemInfo.name === 'Presidential Medal') bossItemBonus = 0.05;
+        else if (selectedBossItemInfo.name === "Dragon's Hoard") bossItemBonus = 0.10;
+        else if (selectedBossItemInfo.name === 'Mafia Ring') bossItemBonus = 0.15;
+        else if (selectedBossItemInfo.name === 'Golden Spatula') bossItemBonus = 0.20;
+        else if (selectedBossItemInfo.name === 'Star Dust') bossItemBonus = 0.25;
+      }
+      
+      // Add boss item bonus
+      calculatedSuccessChance += bossItemBonus;
+      
+      // Cap success chance between 5% and 85%
+      calculatedSuccessChance = Math.min(0.85, Math.max(0.05, calculatedSuccessChance));
+      
+      // Convert to percentage for display
+      setSuccessChance(Math.round(calculatedSuccessChance * 100));
+      
+      // Calculate retaliation chance for display
+      let calculatedRetaliationChance = 0.6; // 60% base
+      
+      // Apply retaliation reduction from boss item
+      const retaliationReduction = selectedBossItemInfo?.name === 'Mafia Ring' ? 0.1 : 0;
+      
+      // Check if boss item prevents retaliation
+      const preventRetaliation = selectedBossItemInfo?.name === 'Invisible Cloak' || 
+                               selectedBossItemInfo?.name === "Sheriff's Badge";
+      
+      if (preventRetaliation) {
+        calculatedRetaliationChance = 0;
+      } else {
+        calculatedRetaliationChance -= retaliationReduction;
+        
+        // Increase chance based on target level
+        if (levelDifference > 0) {
+          calculatedRetaliationChance += levelDifference * 0.07;
+        }
+        
+        // Add bullet noise factor
+        if (bulletsUsed > 10) {
+          calculatedRetaliationChance += Math.min(0.1, (bulletsUsed - 10) * 0.001);
+        }
+      }
+      
+      // Cap between 0% and 85%
+      calculatedRetaliationChance = Math.min(0.85, Math.max(0, calculatedRetaliationChance));
+      
+      // Convert to percentage for display
+      setRetaliationChance(Math.round(calculatedRetaliationChance * 100));
+    } else {
+      setSuccessChance(0);
+      setRetaliationChance(0);
+    }
+  }, [selectedWeaponInfo, selectedTargetInfo, bulletsUsed, selectedBossItemInfo, user]);
+
+  const handleSelectTarget = (e) => {
+    setSelectedTargetId(e.target.value);
+  };
+
+  const handleSelectWeapon = (e) => {
+    setSelectedWeaponName(e.target.value);
+  };
 
   const handleSelectBossItem = (e) => {
     const itemName = e.target.value;
     setSelectedBossItemName(itemName);
+
     if (itemName && BOSS_ITEM_STATS[itemName]) {
-        setSelectedBossItemInfo({
-            name: itemName,
-            ...BOSS_ITEM_STATS[itemName]
-        });
+      setSelectedBossItemInfo({
+        name: itemName,
+        ...BOSS_ITEM_STATS[itemName]
+      });
     } else {
-        setSelectedBossItemInfo(null);
+      setSelectedBossItemInfo(null);
     }
   };
 
-  // --- Bullet Input Handling ---
   const handleBulletInputChange = (e) => {
-    setBulletInputValue(e.target.value); // Update raw input value directly
+    setBulletInputValue(e.target.value);
   };
 
   const handleBulletInputBlur = () => {
     const parsedValue = parseInt(bulletInputValue, 10);
-    let validValue = 1; // Default to 1 if invalid
+    let validValue = 1;
+
     if (!isNaN(parsedValue)) {
-        if (parsedValue > 10000) {
-            validValue = 10000; // Clamp max
-        } else if (parsedValue >= 1) {
-            validValue = parsedValue; // Use valid number
-        }
-        // If parsedValue < 1, it defaults back to 1
+      if (parsedValue > 10000) {
+        validValue = 10000;
+      } else if (parsedValue >= 1) {
+        validValue = parsedValue;
+      }
     }
-    setBulletsUsed(validValue); // Update the validated state
-    setBulletInputValue(validValue.toString()); // Sync the input display
+
+    setBulletsUsed(validValue);
+    setBulletInputValue(validValue.toString());
   };
-  // --- End Bullet Input Handling ---
+
+  const formatTime = (milliseconds) => {
+    const totalSeconds = Math.ceil(milliseconds / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const getBulletCost = () => {
+    if (selectedBossItemName === 'Golden Spatula') {
+      return 0;
+    }
+    return bulletsUsed * 100;
+  };
+
+  const playAssassinationAnimation = async (success) => {
+    setAnimationState('aiming');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    setAnimationState('shooting');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    setAnimationState(success ? 'success' : 'failure');
+    setShowResults(true);
+  };
 
   const attemptAssassination = async () => {
-    // Safety check bulletsUsed
     if (isLoading || cooldown > 0 || !isAlive || bulletsUsed < 1 || bulletsUsed > 10000) return;
 
     setResultMessage('');
     setErrorMessage('');
     setScenarioImage('/assets/assassination.png');
+    setShowResults(false);
+    setAnimationState('idle');
 
     if (!selectedTargetId) {
       setErrorMessage('You must select a target.');
       return;
     }
+
     if (!selectedWeaponName) {
-       setErrorMessage('You must select a weapon.');
-       return;
+      setErrorMessage('You must select a weapon.');
+      return;
+    }
+
+    const bulletCost = getBulletCost();
+    if (money < bulletCost) {
+      setErrorMessage(`Not enough money for ${bulletsUsed} bullets. Cost: $${bulletCost.toLocaleString()}`);
+      return;
     }
 
     setIsLoading(true);
     const token = localStorage.getItem('token');
 
     try {
+      setAnimationState('preparing');
+
       const response = await axios.post(`${API_URL}/assassination/attempt`, {
         targetId: selectedTargetId,
         weaponName: selectedWeaponName,
         bossItemName: selectedBossItemName || null,
-        bulletsUsed, // Send the validated number
+        bulletsUsed
       }, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       const data = response.data;
+
+      await playAssassinationAnimation(data.success);
 
       if (data.success) {
         updateUserData({
@@ -182,198 +377,149 @@ const AssassinationPage = () => {
           bossItems: data.updatedBossItems || bossItems,
           rank: data.updatedRank
         });
+
         setResultMessage(data.message + (data.lootMoney > 0 ? ` You looted $${data.lootMoney.toLocaleString()}.` : ''));
         setScenarioImage('/assets/success.png');
-        localStorage.setItem('lastAssassinationAttempt', Date.now().toString());
-        setCooldown(COOLDOWN_TIME_MS);
+
+        if (data.cooldownDuration) {
+          setCooldown(data.cooldownDuration * 1000);
+        } else {
+          setCooldown(COOLDOWN_TIME_MS);
+        }
       } else {
         setErrorMessage(data.message || 'Assassination attempt failed.');
         setScenarioImage(data.userDied ? '/assets/dead.png' : '/assets/failure.png');
 
         if (data.userDied) {
-             updateUserData({
-                isAlive: false,
-                money: data.updatedMoney,
-             });
+          updateUserData({
+            isAlive: false,
+            money: data.updatedMoney
+          });
         } else {
-             updateUserData({
-                money: data.updatedMoney,
-                bossItems: data.updatedBossItems || bossItems,
-             });
+          updateUserData({
+            money: data.updatedMoney,
+            bossItems: data.updatedBossItems || bossItems
+          });
         }
 
-         localStorage.setItem('lastAssassinationAttempt', Date.now().toString());
-         setCooldown(COOLDOWN_TIME_MS);
+        if (data.cooldownDuration) {
+          setCooldown(data.cooldownDuration * 1000);
+        } else {
+          setCooldown(COOLDOWN_TIME_MS);
+        }
       }
     } catch (error) {
-       console.error("Error during assassination:", error)
-       const errorMsg = error.response?.data?.message || 'Server error occurred during assassination.';
-       setErrorMessage(errorMsg);
-       setScenarioImage('/assets/error.png');
+      console.error("Error during assassination:", error);
+      const errorMsg = error.response?.data?.message || 'Server error occurred during assassination.';
+      setErrorMessage(errorMsg);
+      setScenarioImage('/assets/error.png');
+      setAnimationState('error');
     } finally {
       setIsLoading(false);
-      setSelectedBossItemName(''); // Reset dropdown selection
-      setSelectedBossItemInfo(null); // Clear the displayed info box
+      setSelectedBossItemName('');
+      setSelectedBossItemInfo(null);
     }
   };
 
   if (!isAlive) {
-      return (
-          <div className="min-h-screen bg-gray-900 py-20 text-white flex flex-col items-center justify-center">
-               <h1 className="text-4xl font-bold text-red-500 mb-4">You are Dead!</h1>
-               <p className="text-gray-400 mb-6">Assassinations are off the table for now.</p>
-               <img src="/assets/dead.png" alt="You are dead" className="w-64 h-64 rounded-lg shadow-lg"/>
-          </div>
-      )
+    return <DeadView />;
   }
 
-
   return (
-    <div className="min-h-screen bg-gray-900 py-10 md:py-20 text-white">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 md:flex md:gap-8">
-
-        {/* Left Column: Controls */}
-        <div className="md:w-1/2 space-y-6 mb-8 md:mb-0">
-          <h1 className="text-3xl sm:text-4xl font-bold text-red-500">Assassination Mission</h1>
-          <p className="text-gray-400">Select target, weapon, and perks. Take the shot, but watch your back.</p>
-
-          {errorMessage && <div role="alert" className="bg-red-900 border border-red-700 text-red-300 p-3 rounded">{errorMessage}</div>}
-          {resultMessage && <div role="alert" className="bg-green-900 border border-green-700 text-green-300 p-3 rounded">{resultMessage}</div>}
-
-          {/* Target Selection */}
-          <div className="bg-gray-800 rounded-lg p-4 shadow-md">
-            <label htmlFor="target-select" className="block mb-2 font-medium text-gray-300">Choose Target:</label>
-            <select
-              id="target-select"
-              value={selectedTargetId}
-              onChange={e => setSelectedTargetId(e.target.value)}
-              className="w-full p-2 rounded bg-gray-700 border border-gray-600 focus:border-red-500 focus:ring focus:ring-red-500 focus:ring-opacity-50"
-              disabled={targets.length === 0 || isLoading}
-            >
-              <option value="">-- Select Target --</option>
-              {targets.length > 0 ? (
-                  targets.map(target => (
-                    <option key={target._id} value={target._id}>
-                        {target.username} (Lvl: {target.level || 1}, Rank: {target.rank})
-                    </option>
-                  ))
-              ) : (
-                  <option disabled>{isLoading ? 'Loading targets...' : 'No targets available'}</option>
-              )}
-            </select>
-          </div>
-
-          {/* Weapon Selection */}
-          <div className="bg-gray-800 rounded-lg p-4 shadow-md">
-            <label htmlFor="weapon-select" className="block mb-2 font-medium text-gray-300">Choose Weapon:</label>
-            <select
-              id="weapon-select"
-              value={selectedWeaponName}
-              onChange={e => setSelectedWeaponName(e.target.value)}
-              className="w-full p-2 rounded bg-gray-700 border border-gray-600 focus:border-red-500 focus:ring focus:ring-red-500 focus:ring-opacity-50"
-              disabled={availableWeapons.length === 0 || isLoading}
-            >
-              <option value="">-- Select Weapon --</option>
-              {availableWeapons.length > 0 ? (
-                 availableWeapons.map((w, i) => (
-                   <option key={w._id || i} value={w.name}>{w.name} (Acc: {w.attributes.accuracy}%)</option>
-                 ))
-                ) : (
-                 <option disabled>No weapons in inventory</option>
-                )
-              }
-            </select>
-          </div>
-
-           {/* Boss Item Selection */}
-           <div className="bg-gray-800 rounded-lg p-4 shadow-md">
-            <label htmlFor="boss-item-select" className="block mb-2 font-medium text-gray-300">Use Boss Item (Optional):</label>
-            <select
-              id="boss-item-select"
-              value={selectedBossItemName}
-              onChange={handleSelectBossItem}
-              className="w-full p-2 rounded bg-gray-700 border border-gray-600 focus:border-red-500 focus:ring focus:ring-red-500 focus:ring-opacity-50"
-              disabled={uniqueBossItems.length === 0 || isLoading}
-            >
-              <option value="">-- No Boss Item --</option>
-              {uniqueBossItems.length > 0 ? (
-                 uniqueBossItems.map((item, i) => {
-                    const ownedItem = bossItems.find(bi => bi.name === item.name);
-                    const quantity = ownedItem?.quantity || 0;
-                    return (
-                      <option key={item._id || i} value={item.name}>
-                        {item.name} (Qty: {quantity})
-                      </option>
-                    );
-                 })
-                ) : (
-                 <option disabled>No boss items owned</option>
-                )
-              }
-            </select>
-            {selectedBossItemInfo && (
-                <div className="mt-3 p-3 bg-gray-700/50 rounded border border-gray-600 flex items-start gap-3 text-sm"> {/* Changed to items-start */}
-                     <img
-                        src={selectedBossItemInfo.image || '/assets/default_boss_item.png'}
-                        alt={selectedBossItemInfo.name}
-                        className="w-16 h-16 object-contain flex-shrink-0 bg-gray-800 p-1 rounded" // Larger image
-                        loading="lazy"
-                     />
-                     <div className="flex-grow"> {/* Allow text to wrap */}
-                        <p className="font-semibold text-gray-200 text-base mb-1">{selectedBossItemInfo.name}</p> {/* Slightly larger name */}
-                        <p className="text-gray-400">{selectedBossItemInfo.description}</p>
-                     </div>
-                </div>
-            )}
-            <p className="text-xs text-gray-400 mt-1">Boss items are consumed on use (success or failure).</p>
-          </div>
-
-          {/* Updated Bullets Input */}
-          <div className="bg-gray-800 rounded-lg p-4 shadow-md">
-            <label htmlFor="bullets-input" className="block mb-2 font-medium text-gray-300">Bullets (Cost: $100 each):</label>
-            <input
-              id="bullets-input"
-              type="number"
-              value={bulletInputValue} // Bind to raw string state
-              min="1"
-              max="10000"
-              onChange={handleBulletInputChange} // Update raw value
-              onBlur={handleBulletInputBlur} // Validate on blur
-              className="w-full p-2 bg-gray-700 rounded border border-gray-600 focus:border-red-500 focus:ring focus:ring-red-500 focus:ring-opacity-50"
-              disabled={isLoading}
-            />
-             {/* Cost uses validated state */}
-             <p className="text-xs text-gray-400 mt-1">Total Cost: ${(bulletsUsed * 100).toLocaleString()}</p>
-          </div>
-
-          {/* Action Button */}
-          <button
-            onClick={attemptAssassination}
-            // Disable if loading, cooldown, no target/weapon, or validated bullets < 1
-            disabled={isLoading || cooldown > 0 || !selectedTargetId || !selectedWeaponName || !isAlive || bulletsUsed < 1}
-            className={`w-full py-3 rounded font-bold transition duration-200 ease-in-out ${
-              isLoading || cooldown > 0 || !selectedTargetId || !selectedWeaponName || !isAlive || bulletsUsed < 1
-                ? 'bg-gray-600 cursor-not-allowed'
-                : 'bg-red-600 hover:bg-red-500 text-white'
-            }`}
-          >
-            {isLoading ? 'Executing...' : cooldown > 0 ? `Cooldown (${Math.ceil(cooldown / 1000)}s)` : 'Attempt Assassination'}
-          </button>
-
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-red-900/10 to-gray-900 py-10 md:py-20 text-white px-4 sm:px-6 lg:px-8">
+      <div className="container mx-auto max-w-6xl">
+        <div className="text-center mb-8">
+          <FaUserSecret className="text-red-500 text-5xl mx-auto mb-4" />
+          <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-400 mb-2">
+            Assassination Contracts
+          </h1>
+          <p className="text-gray-400 max-w-xl mx-auto">
+            One shot, one kill. Choose your target wisely, equip the right weapon, and take aim. But be careful - your targets might fight back.
+          </p>
         </div>
 
-        {/* Right Column: Image */}
-        <div className="md:w-1/2 flex items-center justify-center p-4 bg-gray-800 rounded-lg shadow-lg">
-             <img
-                key={scenarioImage}
-                src={scenarioImage}
-                className="max-w-full max-h-96 h-auto object-contain rounded-xl"
-                alt="Assassination Scenario"
-                onError={(e) => { e.target.onerror = null; e.target.src='/assets/error.png'; }}
-                loading="lazy"
+        <div className="h-16 mb-6 max-w-3xl mx-auto text-center">
+          {errorMessage && (
+            <div className="p-3 bg-red-900/80 text-white rounded-lg shadow-md flex items-center justify-center animate-fade-in">
+              <FaTimesCircle className="mr-2 flex-shrink-0" /> {errorMessage}
+            </div>
+          )}
+          {resultMessage && (
+            <div className="p-3 bg-green-900/80 text-white rounded-lg shadow-md flex items-center justify-center animate-fade-in">
+              <FaCheckCircle className="mr-2 flex-shrink-0" /> {resultMessage}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-5 space-y-5">
+            <TargetSelection 
+              targets={targets}
+              selectedTargetId={selectedTargetId}
+              selectedTargetInfo={selectedTargetInfo}
+              user={user}
+              isLoading={isLoading}
+              cooldown={cooldown}
+              handleSelectTarget={handleSelectTarget}
             />
+
+            <WeaponSelection 
+              availableWeapons={availableWeapons}
+              selectedWeaponName={selectedWeaponName}
+              selectedWeaponInfo={selectedWeaponInfo}
+              isLoading={isLoading}
+              cooldown={cooldown}
+              handleSelectWeapon={handleSelectWeapon}
+            />
+
+            <SpecialItemSelection 
+              uniqueBossItems={uniqueBossItems}
+              bossItems={bossItems}
+              selectedBossItemName={selectedBossItemName}
+              selectedBossItemInfo={selectedBossItemInfo}
+              isLoading={isLoading}
+              cooldown={cooldown}
+              handleSelectBossItem={handleSelectBossItem}
+            />
+
+            <AmmunitionSection 
+              bulletsUsed={bulletsUsed}
+              bulletInputValue={bulletInputValue}
+              isLoading={isLoading}
+              cooldown={cooldown}
+              money={money}
+              successChance={successChance}
+              retaliationChance={retaliationChance}
+              handleBulletInputChange={handleBulletInputChange}
+              handleBulletInputBlur={handleBulletInputBlur}
+              getBulletCost={getBulletCost}
+            />
+          </div>
+
+          <AssassinationZone 
+            cooldown={cooldown}
+            formatTime={formatTime}
+            scenarioImage={scenarioImage}
+            animationState={animationState}
+            showResults={showResults}
+            isLoading={isLoading}
+            selectedTargetId={selectedTargetId}
+            selectedWeaponName={selectedWeaponName}
+            isAlive={isAlive}
+            bulletsUsed={bulletsUsed}
+            money={money}
+            getBulletCost={getBulletCost}
+            attemptAssassination={attemptAssassination}
+            user={user}
+            kills={kills}
+            xp={xp}
+          />
         </div>
       </div>
+
+      <footer className="mt-12 text-center text-gray-500 text-sm">
+        Potato Underworld © {new Date().getFullYear()}. All rights reserved.
+      </footer>
     </div>
   );
 };

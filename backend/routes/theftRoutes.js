@@ -3,11 +3,16 @@ const router = express.Router();
 const theftController = require('../controllers/theftController');
 const authMiddleware = require('../middleware/authMiddleware');
 
-// Theft routes
+// Apply auth middleware to all routes
+router.use(authMiddleware);
 
-router.post('/steal', authMiddleware, theftController.stealItem);
-router.post('/sell', authMiddleware, theftController.sellItem);
-router.get('/stolen-items', authMiddleware, theftController.getStolenItems);
+// Get all stolen items
+router.get('/stolen-items', theftController.getStolenItems);
 
+// Steal an item
+router.post('/steal', theftController.stealItem);
+
+// Sell an item
+router.post('/sell', theftController.sellItem);
 
 module.exports = router;

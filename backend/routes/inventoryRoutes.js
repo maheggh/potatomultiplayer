@@ -4,19 +4,19 @@ const router = express.Router();
 const inventoryController = require('../controllers/inventoryController');
 const authMiddleware = require('../middleware/authMiddleware');
 
-// Weapons
-router.post('/weapons/buy', authMiddleware, inventoryController.buyItem('weapon'));
-router.post('/weapons/sell', authMiddleware, inventoryController.sellItem('weapon'));
-
-// Armor
-router.post('/armor/buy', authMiddleware, inventoryController.buyItem('armor'));
-router.post('/armor/sell', authMiddleware, inventoryController.sellItem('armor'));
-
-// Loot
-router.post('/loot/collect', authMiddleware, inventoryController.collectLoot);
-
-// General Inventory Routes
+// Get inventory
 router.get('/', authMiddleware, inventoryController.getInventory);
+
+// Update inventory
 router.post('/update', authMiddleware, inventoryController.updateInventory);
+
+// Add item to inventory
+router.post('/add', authMiddleware, inventoryController.addItem);
+
+// Remove item from inventory
+router.post('/remove', authMiddleware, inventoryController.removeItem);
+
+// Collect loot
+router.post('/loot/collect', authMiddleware, inventoryController.collectLoot);
 
 module.exports = router;

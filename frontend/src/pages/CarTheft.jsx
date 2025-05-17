@@ -1,330 +1,551 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useMemo, lazy, Suspense } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import JailStatus from '../components/JailStatus';
 import axios from 'axios';
 import {
   FaCarCrash, FaWarehouse, FaDollarSign, FaCheckCircle,
-  FaTimesCircle, FaSpinner, FaKey, FaLock, FaPercentage
+  FaTimesCircle, FaSpinner, FaKey, FaLock, FaPercentage,
+  FaExclamationTriangle, FaCarSide, FaMoneyBillWave
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
-
-const venues = {
-  'Rich Potato Neighborhood': {
-    image: '/assets/rich.png',
-    difficulty: 'High Risk',
-    description: 'Luxury rides, heavy security.',
-    baseChance: 10,
-  },
-  'Spudville Downtown': {
-    image: '/assets/downtown.png',
-    difficulty: 'Medium Risk',
-    description: 'Busy streets, decent cars.',
-    baseChance: 20,
-  },
-  'Fries End Suburbs': {
-    image: '/assets/fries.png',
-    difficulty: 'Medium Risk',
-    description: 'Standard vehicles, moderate watch.',
-    baseChance: 25,
-  },
-  'Mashy Meadows': {
-    image: '/assets/mashy.png',
-    difficulty: 'Low Risk',
-    description: 'Older cars, less attention.',
-    baseChance: 35,
-  },
-  'Tuber Town': {
-    image: '/assets/tuber.png',
-    difficulty: 'Low Risk',
-    description: 'Work trucks and basic transport.',
-    baseChance: 40,
-  },
+// Pre-load common images
+const preloadImage = (src) => {
+  const img = new Image();
+  img.src = src;
 };
 
-function calculateSuccessDisplayChance(baseChance, userLevel) {
-  const levelBonus = (userLevel || 1) * 1.5;
-  const rawChance = baseChance + levelBonus;
-  return Math.max(5, Math.min(rawChance, 95)).toFixed(1);
-}
+// Constants - move outside component to prevent re-creation
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+// Result Modal Component for clearer outcomes
+const ResultModal = ({ type, message, car, venue, onClose }) => {
+  if (!message) return null;
+
+  let bgColor, icon, animation, carImage;
+  
+  if (type === 'success') {
+    bgColor = 'bg-green-800';
+    icon = <FaCheckCircle className="text-3xl text-green-400" />;
+    animation = 'animate-slideIn';
+    carImage = car?.image || (venue && venue.carImages ? venue.carImages[0] : null);
+  } else if (type === 'caught') {
+    bgColor = 'bg-red-800';
+    icon = <FaLock className="text-3xl text-red-400" />;
+    animation = 'animate-shake';
+    carImage = '/assets/police-car.png';
+  } else {
+    bgColor = 'bg-yellow-800';
+    icon = <FaExclamationTriangle className="text-3xl text-yellow-400" />;
+    animation = 'animate-slideIn';
+    carImage = '/assets/escape.png';
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/70 backdrop-blur-sm">
+      <div className={`${bgColor} ${animation} rounded-xl p-6 max-w-md mx-auto shadow-2xl border border-gray-700 transform transition-all`}>
+        <div className="flex flex-col items-center text-center">
+          <div className="mb-4 text-4xl">
+            {icon}
+          </div>
+          
+          {carImage && (
+            <div className="mb-4 p-2 bg-gray-900/50 rounded-lg">
+              <img 
+                src={carImage} 
+                alt={car?.name || (type === 'success' ? 'Stolen Car' : type === 'caught' ? 'Busted' : 'Escaped')} 
+                className="w-60 h-100 object-contain mx-auto"
+                onError={(e) => {e.target.src = '/assets/default-car.png';}}
+              />
+            </div>
+          )}
+          
+          <h3 className="text-xl font-bold text-white mb-2">
+            {type === 'success' ? 'Car Stolen Successfully!' : 
+             type === 'caught' ? 'Busted by Security!' : 'Close Call!'}
+          </h3>
+          
+          <p className="text-white mb-4">{message}</p>
+          
+          {car && type === 'success' && (
+            <div className="mb-4 py-2 px-4 bg-green-900/50 rounded-lg">
+              <p className="text-green-300 flex items-center justify-center gap-1 font-bold">
+                <FaMoneyBillWave/> Value: ${car.price?.toLocaleString() || 0}
+              </p>
+            </div>
+          )}
+          
+          <button 
+            onClick={onClose}
+            className={`mt-2 py-2 px-4 rounded ${
+              type === 'success' ? 'bg-green-600 hover:bg-green-500' : 
+              type === 'caught' ? 'bg-red-600 hover:bg-red-500' :
+              'bg-yellow-600 hover:bg-yellow-500'
+            } text-white font-bold transition-colors`}
+          >
+            {type === 'success' ? 'Sweet!' : 
+             type === 'caught' ? 'Darn!' : 'Close One!'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// The main Car Theft component
 const CarTheft = () => {
   const {
     user,
     isLoggedIn,
     loading: authLoading,
     isInJail,
-    jailEndTime,
     updateUserData,
-    checkAndUpdateJailStatus
+    checkAndUpdateJailStatus,
+    token
   } = useContext(AuthContext);
 
+  // Component state
   const [stolenCars, setStolenCars] = useState([]);
-  const [successMessage, setSuccessMessage] = useState('');
-  const [failureMessage, setFailureMessage] = useState('');
+  const [venueData, setVenueData] = useState({});
+  const [result, setResult] = useState({ show: false, type: null, message: '', car: null, venue: null });
   const [showGarage, setShowGarage] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isStealing, setIsStealing] = useState(null);
   const [isSelling, setIsSelling] = useState(null);
+  const [jailStatus, setJailStatus] = useState(null);
 
-  // Breakout
-  const [breakoutAttemptedThisSentence, setBreakoutAttemptedThisSentence] = useState(false);
-  const [breakoutResult, setBreakoutResult] = useState(null);
-  const [breakoutMessage, setBreakoutMessage] = useState('');
-  const [showBreakoutSuccessImage, setShowBreakoutSuccessImage] = useState(false);
+  // Memoize auth header to prevent recreation
+  const authHeader = useMemo(() => 
+    token ? { headers: { Authorization: `Bearer ${token}` } } : null,
+  [token]);
 
-  const token = localStorage.getItem('token');
-  const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+  // Optimized calculation function
+  const calculateSuccessDisplayChance = useCallback((baseChance, userLevel) => {
+    const levelBonus = (userLevel || 1) * 0.8; // Reduced bonus from 1.5 to 0.8
+    const rawChance = baseChance + levelBonus;
+    return Math.max(5, Math.min(rawChance, 85)).toFixed(1); // Capped at 85% instead of 95%
+  }, []);
 
+  // Fetch venues and cars data
+  const fetchVenueData = useCallback(async () => {
+    if (!token || !user) return;
+    
+    try {
+      const res = await axios.get(`${API_URL}/cartheft/venues`, authHeader);
+      if (res.data.success) {
+        // Process venues to include UI-specific data
+        const processedVenues = {};
+        
+        Object.entries(res.data.venues).forEach(([venueName, venue]) => {
+          // Get available car images for this venue
+          const carImages = venue.cars.map(car => car.image);
+          
+          // Map difficulty level to UI text
+          let difficultyText;
+          switch(venue.difficulty) {
+            case 'high': difficultyText = 'High Risk'; break;
+            case 'medium': difficultyText = 'Medium Risk'; break;
+            case 'low': 
+            default: difficultyText = 'Low Risk';
+          }
+          
+          // Convert jail time from seconds to minutes for display
+          const jailTimeInMinutes = Math.round(venue.jailTime / 60);
+          
+          // Determine background gradient based on difficulty
+          let backgroundColor;
+          switch(venue.difficulty) {
+            case 'high': backgroundColor = 'from-purple-700 to-purple-900'; break;
+            case 'medium': backgroundColor = venue.cars.length >= 5 
+              ? 'from-blue-700 to-blue-900' 
+              : 'from-cyan-700 to-cyan-900'; break;
+            case 'low':
+            default: backgroundColor = venue.cars.length >= 4 
+              ? 'from-teal-700 to-teal-900' 
+              : 'from-green-700 to-green-900';
+          }
+          
+          // Generate a description based on car categories
+          const categories = venue.cars.map(car => car.category);
+          const uniqueCategories = [...new Set(categories)];
+          let description;
+          
+          if (uniqueCategories.includes('luxury')) {
+            description = 'Luxury rides, heavy security.';
+          } else if (uniqueCategories.includes('sports')) {
+            description = 'Sporty vehicles, decent security.';
+          } else if (uniqueCategories.includes('suv')) {
+            description = 'Family vehicles, moderate watch.';
+          } else if (uniqueCategories.includes('truck')) {
+            description = 'Work trucks and utility vehicles.';
+          } else {
+            description = 'Standard vehicles, varying security.';
+          }
+          
+          // Determine venue image path based on name
+          let image;
+          if (venueName.includes('Rich')) image = '/assets/rich.png';
+          else if (venueName.includes('Downtown')) image = '/assets/downtown.png';
+          else if (venueName.includes('Fries')) image = '/assets/fries.png';
+          else if (venueName.includes('Mashy')) image = '/assets/mashy.png';
+          else if (venueName.includes('Tuber')) image = '/assets/tuber.png';
+          else image = '/assets/default-venue.png';
+          
+          // Get base chance from the average of car baseChances in the venue
+          const avgBaseChance = venue.cars.reduce((sum, car) => sum + car.baseChance, 0) / venue.cars.length;
+          
+          // Create the processed venue object with UI details
+          processedVenues[venueName] = {
+            ...venue,
+            image,
+            difficulty: difficultyText,
+            description,
+            baseChance: avgBaseChance,
+            jailTime: jailTimeInMinutes,
+            backgroundColor,
+            carImages
+          };
+        });
+        
+        setVenueData(processedVenues);
+      }
+    } catch (err) {
+      console.error('Failed to load venue data:', err);
+    }
+  }, [token, user, authHeader]);
+
+  // Fetch user's cars
   const fetchCars = useCallback(async () => {
     if (!token || !user) {
       setIsLoadingData(false);
       return;
     }
+    
     try {
-      const profileRes = await axios.get(`${API_URL}/users/profile`, authHeader);
+      const profileRes = await axios.get(`${API_URL}/users/me`, authHeader);
       if (profileRes.data.success) {
-        setStolenCars(profileRes.data.userData.cars || []);
-      } else {
-        setFailureMessage(profileRes.data.message || "Could not load your car data.");
+        // Create a unique ID for each car to prevent duplicate key issues
+        const carsWithUniqueIds = (profileRes.data.userData.cars || []).map((car, index) => ({
+          ...car,
+          uniqueId: `${car._id || 'car'}-${index}-${Date.now()}`
+        }));
+        setStolenCars(carsWithUniqueIds);
       }
     } catch (err) {
-      setFailureMessage(err.response?.data?.message || 'Failed to load car data.');
+      console.error('Failed to load cars:', err);
     } finally {
       setIsLoadingData(false);
     }
-  }, [token, user]);
+  }, [token, user, authHeader]);
 
+  // Initial data loading
   useEffect(() => {
     if (isLoggedIn && user) {
-      fetchCars();
-      checkAndUpdateJailStatus();
+      Promise.all([
+        fetchVenueData(),
+        fetchCars(),
+        checkAndUpdateJailStatus().then(status => setJailStatus(status))
+      ]).then(() => setIsLoadingData(false));
     } else {
       setStolenCars([]);
+      setVenueData({});
       setIsLoadingData(false);
     }
-  }, [isLoggedIn, user, fetchCars, checkAndUpdateJailStatus]);
+  }, [isLoggedIn, user, fetchVenueData, fetchCars, checkAndUpdateJailStatus]);
 
+  // Preload all venue and car images once venue data is loaded
   useEffect(() => {
-    let t;
-    if (failureMessage || successMessage) {
-      t = setTimeout(() => {
-        setFailureMessage('');
-        setSuccessMessage('');
-      }, 5000);
+    if (Object.keys(venueData).length > 0) {
+      // Preload venue images
+      Object.values(venueData).forEach(venue => {
+        preloadImage(venue.image);
+        // Preload car images for each venue
+        if (venue.carImages) {
+          venue.carImages.forEach(carImage => preloadImage(carImage));
+        }
+      });
+      
+      // Preload common feedback images
+      preloadImage('/assets/police-car.png');
+      preloadImage('/assets/escape.png');
+      preloadImage('/assets/default-car.png');
     }
-    return () => clearTimeout(t);
-  }, [failureMessage, successMessage]);
+  }, [venueData]);
 
+  // Handle jail release
   const handleReleaseFromJail = useCallback(() => {
-    // updateUserData on fields your userController allows
-    updateUserData({ inJail: false, jailTimeEnd: null });
-    setSuccessMessage('You are now free from jail!');
+    updateUserData({ inJail: false, jailTimeEnd: null, jailRecord: null });
+    setJailStatus(null);
+    setResult({
+      show: true,
+      type: 'success',
+      message: 'Released from jail! Back to the streets.',
+      car: null,
+      venue: null
+    });
   }, [updateUserData]);
 
-  async function stealCar(venueName) {
+  // Update jail status
+  const handleUpdateJailStatus = useCallback((status) => {
+    setJailStatus(status);
+  }, []);
+
+  // Close result modal
+  const closeResult = () => {
+    setResult({ show: false, type: null, message: '', car: null, venue: null });
+  };
+
+  // Car theft attempt function
+  const stealCar = async (venueName) => {
     if (isInJail || isStealing) return;
+    
     setIsStealing(venueName);
-    setSuccessMessage('');
-    setFailureMessage('');
+    const selectedVenue = venueData[venueName];
+    
     try {
       const res = await axios.post(
         `${API_URL}/cartheft/steal`,
         { venueName },
         authHeader
       );
+      
       if (res.data.success) {
-        setSuccessMessage(res.data.message);
-        setStolenCars((prev) => [...prev, res.data.car]);
-        updateUserData({ xp: res.data.xp, rank: res.data.rank });
+        // Add unique ID to the car
+        const stolenCar = {
+          ...res.data.car,
+          uniqueId: `${res.data.car._id || 'car'}-${Date.now()}`
+        };
+        
+        // Update stolen cars list
+        setStolenCars(prev => [...prev, stolenCar]);
+        
+        // Update user data
+        updateUserData({ 
+          xp: res.data.xp, 
+          rank: res.data.rank, 
+          level: res.data.level 
+        });
+        
+        // Show success feedback
+        setResult({
+          show: true,
+          type: 'success',
+          message: res.data.message,
+          car: stolenCar,
+          venue: selectedVenue
+        });
       } else {
-        setFailureMessage(res.data.message || 'Theft attempt failed.');
+        // Failed but escaped
+        setResult({
+          show: true,
+          type: 'escaped',
+          message: res.data.message,
+          car: null,
+          venue: selectedVenue
+        });
       }
-    } catch (err) {
-      const data = err.response?.data;
-      setFailureMessage(data?.message || 'Error stealing car.');
-      if (data?.inJail && data?.jailTimeEnd) {
-        updateUserData({ inJail: true, jailTimeEnd: data.jailTimeEnd });
+    } catch (error) {
+      const errorData = error.response?.data;
+      
+      if (errorData?.inJail) {
+        // Caught and jailed
+        setResult({
+          show: true,
+          type: 'caught',
+          message: errorData.message,
+          car: null,
+          venue: selectedVenue
+        });
+        
+        // Update jail status
+        checkAndUpdateJailStatus();
+      } else {
+        // Generic error
+        setResult({
+          show: true,
+          type: 'escaped',
+          message: errorData?.message || 'Something went wrong during the heist.',
+          car: null,
+          venue: selectedVenue
+        });
       }
     } finally {
       setIsStealing(null);
     }
-  }
+  };
 
-  async function sellCar(index) {
+  // Sell car function
+  const sellCar = async (index) => {
     if (isSelling !== null || isInJail) return;
+    
     setIsSelling(index);
-    setSuccessMessage('');
-    setFailureMessage('');
+    const carToSell = stolenCars[index];
+    
     try {
       const res = await axios.post(
         `${API_URL}/cartheft/sell`,
         { carIndex: index },
         authHeader
       );
+      
       if (res.data.success) {
-        setSuccessMessage(res.data.message);
-        setStolenCars(res.data.cars);
+        // Update cars list with unique IDs
+        const updatedCars = (res.data.cars || []).map((car, i) => ({
+          ...car,
+          uniqueId: `${car._id || 'car'}-${i}-${Date.now()}`
+        }));
+        
+        setStolenCars(updatedCars);
         updateUserData({ money: res.data.money });
+        
+        // Show success feedback
+        setResult({
+          show: true,
+          type: 'success',
+          message: res.data.message,
+          car: { ...carToSell, sold: true }
+        });
       } else {
-        setFailureMessage(res.data.message || 'Failed to sell the car.');
+        // Failed to sell
+        setResult({
+          show: true,
+          type: 'escaped',
+          message: res.data.message || 'Failed to sell the car.',
+          car: null
+        });
       }
-    } catch (err) {
-      setFailureMessage(err.response?.data?.message || 'Error selling car.');
+    } catch (error) {
+      // Error handling
+      setResult({
+        show: true,
+        type: 'escaped',
+        message: error.response?.data?.message || 'Error selling car.',
+        car: null
+      });
     } finally {
       setIsSelling(null);
     }
-  }
-
-  const handleAttemptBreakout = async () => {
-    setBreakoutAttemptedThisSentence(true);
-    setBreakoutMessage('');
-    setBreakoutResult(null);
-    try {
-      const res = await axios.post(`${API_URL}/jail/breakout`, {}, authHeader);
-      const success = res.data.breakoutSuccessful;
-      setBreakoutResult(success ? 'success' : 'fail');
-      setBreakoutMessage(res.data.message);
-      if (success) {
-        setShowBreakoutSuccessImage(true);
-        setTimeout(() => setShowBreakoutSuccessImage(false), 5000);
-        checkAndUpdateJailStatus();
-      }
-    } catch (err) {
-      setBreakoutResult('fail');
-      setBreakoutMessage(err.response?.data?.message || 'Breakout attempt failed.');
-    }
   };
 
-  const pageLoading = authLoading || isLoadingData;
-  if (pageLoading) {
+  // Loading state
+  if (authLoading || isLoadingData) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-        Loading Car Theft Operations...
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white">
+        <FaSpinner className="animate-spin text-4xl text-blue-500 mb-4" />
+        <p className="text-xl">Loading Car Theft Operations...</p>
       </div>
     );
   }
+  
+  // Auth check
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-        Please log in to access Car Theft.
-      </div>
-    );
-  }
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-        Loading User Data...
+        <div className="text-center">
+          <FaLock className="text-6xl text-blue-500 mb-4 mx-auto" />
+          <p className="text-xl">Please log in to access Car Theft.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-800 via-gray-900 to-black text-white pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-800 via-gray-900 to-black text-white pt-20 pb-12 px-4">
+      {/* Result Modal */}
+      {result.show && (
+        <ResultModal
+          type={result.type}
+          message={result.message}
+          car={result.car}
+          venue={result.venue}
+          onClose={closeResult}
+        />
+      )}
+
       <div className="container mx-auto max-w-6xl">
-        <div className="text-center mb-10 md:mb-12">
+        <div className="text-center mb-10">
           <FaCarCrash className="mx-auto text-6xl text-red-500 mb-4" />
-          <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-400 mb-2">
+          <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-blue-400 mb-2">
             Grand Theft Spudo
           </h1>
           <p className="text-lg text-gray-400 italic">
             Higher level, better odds. Choose your target wisely.
           </p>
-        </div>
-
-        <div className="h-12 mb-6 max-w-3xl mx-auto text-center">
-          {!isInJail && successMessage && (
-            <div className="p-3 bg-green-500/80 text-white rounded-lg shadow-md flex items-center justify-center animate-fade-in text-sm">
-              <FaCheckCircle className="mr-2 flex-shrink-0" /> {successMessage}
+          
+          {/* Level & Stats Display */}
+          <div className="mt-4 inline-flex gap-4 bg-gray-800/50 rounded-lg p-2">
+            <div className="px-3 py-1 bg-gray-700/50 rounded">
+              <span className="text-xs text-gray-400">Level</span>
+              <p className="font-bold text-yellow-400">{user?.level || 1}</p>
             </div>
-          )}
-          {!isInJail && failureMessage && (
-            <div className="p-3 bg-red-500/80 text-white rounded-lg shadow-md flex items-center justify-center animate-fade-in text-sm">
-              <FaTimesCircle className="mr-2 flex-shrink-0" /> {failureMessage}
+            <div className="px-3 py-1 bg-gray-700/50 rounded">
+              <span className="text-xs text-gray-400">XP</span>
+              <p className="font-bold text-blue-400">{user?.xp || 0}</p>
             </div>
-          )}
+            <div className="px-3 py-1 bg-gray-700/50 rounded">
+              <span className="text-xs text-gray-400">Rank</span>
+              <p className="font-bold text-purple-400">{user?.rank || 'Rookie'}</p>
+            </div>
+          </div>
         </div>
 
         <div className="relative mb-16">
+          {/* Jail Overlay */}
           {isInJail && (
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-xl z-10 flex flex-col items-center justify-center p-4 border-2 border-yellow-500 shadow-lg">
               <JailStatus
-                jailTimeEnd={jailEndTime}
                 onRelease={handleReleaseFromJail}
-                onAttemptBreakout={handleAttemptBreakout}
-                breakoutAttempted={breakoutAttemptedThisSentence}
-                breakoutResult={breakoutResult}
-                showBreakoutSuccessImage={showBreakoutSuccessImage}
+                onUpdateJailStatus={handleUpdateJailStatus}
+                token={token}
               />
-              {breakoutResult === 'fail' && breakoutMessage && !showBreakoutSuccessImage && (
-                <p className="mt-2 text-red-400 font-semibold animate-pulse">
-                  {breakoutMessage}
-                </p>
-              )}
-              <p className="mt-4 text-xl font-bold text-yellow-400 flex items-center gap-2">
-                <FaLock /> Actions Disabled While Jailed
-              </p>
             </div>
           )}
 
-          <div
-            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 ${
-              isInJail ? 'opacity-30 pointer-events-none' : ''
-            }`}
-          >
-            {Object.entries(venues).map(([venueName, venue]) => {
+          {/* Venue Grid */}
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 ${isInJail ? 'opacity-30 pointer-events-none' : ''}`}>
+            {Object.entries(venueData).map(([venueName, venue]) => {
               const isLoadingThis = isStealing === venueName;
-              const displayChance = calculateSuccessDisplayChance(venue.baseChance, user.level);
+              const displayChance = calculateSuccessDisplayChance(venue.baseChance, user?.level);
+              
               return (
                 <div
                   key={venueName}
-                  className={`bg-gradient-to-br from-gray-700 to-gray-800 rounded-xl shadow-lg p-5 text-center flex flex-col justify-between border border-gray-600/50 transition duration-300 ease-in-out ${
-                    !isInJail && !isStealing
-                      ? 'hover:scale-105 hover:shadow-purple-500/20 hover:border-purple-500/50'
-                      : ''
-                  }`}
+                  className={`bg-gradient-to-br ${venue.backgroundColor || 'from-gray-700 to-gray-800'} rounded-xl shadow-lg p-5 text-center flex flex-col justify-between border border-gray-600/50 transition-all duration-300 ease-in-out transform ${!isInJail && !isStealing ? 'hover:scale-102 hover:shadow-lg' : ''}`}
                 >
                   <div className="flex-grow">
-                    <h3 className="text-xl font-semibold mb-2 text-purple-300">
-                      {venueName}
-                    </h3>
-                    <p className="text-xs font-bold uppercase tracking-wider mb-1 text-yellow-400">
-                      {venue.difficulty}
-                    </p>
-                    <p className="text-sm font-medium text-cyan-300 mb-3 flex items-center justify-center gap-1">
-                      <FaPercentage /> Success Chance: {displayChance}%
-                    </p>
-                    <div className="h-40 mb-4 flex items-center justify-center bg-gray-800/50 rounded-lg overflow-hidden p-2">
-                      <img
-                        src={venue.image}
+                    <h3 className="text-xl font-semibold mb-2 text-white">{venueName}</h3>
+                    <div className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-gray-800/70 rounded mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-yellow-400">
+                        {venue.difficulty}
+                      </span>
+                    </div>
+                    <div className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-gray-800/70 rounded mb-3">
+                      <FaPercentage className="text-cyan-400" /> 
+                      <span className="font-medium text-cyan-300">{displayChance}%</span>
+                    </div>
+                    <div className="h-100 w-100 mb-4 flex items-center justify-center bg-gray-800/50 rounded-lg overflow-hidden p-2">
+                      <img 
+                        src={venue.image} 
+                        alt={venueName} 
                         className="max-h-full max-w-full object-contain"
-                        alt={venueName}
                         loading="lazy"
+                        onError={(e) => {e.target.src = '/assets/default-venue.png';}}
                       />
                     </div>
-                    <p className="text-sm text-gray-400 mb-4">
-                      {venue.description}
-                    </p>
+                    <p className="text-sm text-gray-300 mb-4">{venue.description}</p>
                   </div>
                   <button
-                    disabled={isInJail || !!isStealing}
                     onClick={() => stealCar(venueName)}
-                    className={`w-full mt-auto py-2.5 px-4 rounded-lg font-semibold text-white transition duration-200 ease-in-out flex items-center justify-center gap-2 shadow-md ${
-                      isLoadingThis
-                        ? 'bg-blue-700 cursor-wait'
-                        : isStealing
-                        ? 'bg-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-500 transform hover:scale-105'
+                    disabled={isInJail || !!isStealing}
+                    className={`w-full mt-auto py-2.5 px-4 rounded-lg font-semibold text-white transition duration-200 flex items-center justify-center gap-2 shadow-md ${
+                      isLoadingThis ? 'bg-blue-700 cursor-wait' :
+                      isStealing ? 'bg-gray-500 cursor-not-allowed' :
+                      'bg-blue-600 hover:bg-blue-500 active:bg-blue-700'
                     }`}
                   >
                     {isLoadingThis ? (
-                      <>
-                        <FaSpinner className="animate-spin" /> Hotwiring...
-                      </>
+                      <><FaSpinner className="animate-spin" /> Hotwiring...</>
                     ) : (
-                      <>
-                        <FaKey /> Attempt Heist
-                      </>
+                      <><FaKey /> Attempt Heist</>
                     )}
                   </button>
                 </div>
@@ -333,24 +554,23 @@ const CarTheft = () => {
           </div>
         </div>
 
+        {/* Garage Button */}
         <div className="text-center mb-8">
           <button
-            onClick={() => setShowGarage((v) => !v)}
+            onClick={() => setShowGarage((prev) => !prev)}
             disabled={isInJail}
-            className={`bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-3 rounded-full transition duration-300 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-opacity-50 shadow-lg flex items-center justify-center gap-2 mx-auto ${
+            className={`bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-3 rounded-full transition duration-300 shadow-lg flex items-center justify-center gap-2 mx-auto ${
               isInJail ? 'opacity-50 cursor-not-allowed' : 'hover:from-purple-700 hover:to-indigo-700 transform hover:scale-105'
             }`}
           >
-            <FaWarehouse /> {showGarage ? 'Hide Garage' : 'Open Garage'} (
-            {stolenCars.length})
+            <FaWarehouse /> {showGarage ? 'Hide Garage' : 'Open Garage'} ({stolenCars.length})
           </button>
         </div>
 
+        {/* Stolen Cars List */}
         {showGarage && (
-          <div className="mt-4 bg-gray-800/70 backdrop-blur-md p-6 md:p-8 rounded-xl shadow-inner border border-gray-700/50 animate-fade-in">
-            <h3 className="text-3xl font-semibold mb-6 text-gray-200 text-center">
-              Your Stolen Rides
-            </h3>
+          <div className="mt-4 bg-gray-800/70 backdrop-blur-md p-6 rounded-xl shadow-inner border border-gray-700/50 animate-fadeIn">
+            <h3 className="text-3xl font-semibold mb-6 text-gray-200 text-center">Your Stolen Rides</h3>
             {stolenCars.length > 0 ? (
               <ul className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {stolenCars.map((car, idx) => {
@@ -358,16 +578,19 @@ const CarTheft = () => {
                   const sellValue = car.price || 0;
                   return (
                     <li
-                      key={car._id || idx}
-                      className="flex flex-col sm:flex-row items-center justify-between bg-gray-700/80 p-4 rounded-lg shadow hover:bg-gray-700 transition duration-200"
+                      key={car.uniqueId || `car-${idx}-${Date.now()}`}
+                      className="flex flex-col sm:flex-row items-center justify-between bg-gray-700/80 p-4 rounded-lg shadow transition-all duration-200 hover:bg-gray-700"
                     >
                       <div className="flex items-center mb-3 sm:mb-0 flex-grow mr-4">
-                        <img
-                          src={car.image || '/assets/default.png'}
-                          className="w-20 h-16 object-contain rounded mr-4 border border-gray-600 bg-gray-800 p-1 flex-shrink-0"
-                          alt={car.name}
-                          loading="lazy"
-                        />
+                        <div className="w-20 h-16 flex items-center justify-center border border-gray-600 bg-gray-800 p-1 rounded mr-4">
+                          <img
+                            src={car.image || '/assets/default-car.png'}
+                            className="max-w-full max-h-full object-contain"
+                            alt={car.name}
+                            loading="lazy"
+                            onError={(e) => {e.target.src = '/assets/default-car.png';}}
+                          />
+                        </div>
                         <div className="flex-grow">
                           <span
                             className="font-medium text-lg text-gray-100 block truncate"
@@ -379,6 +602,11 @@ const CarTheft = () => {
                             <FaDollarSign /> Est. Value:{' '}
                             {sellValue.toLocaleString()}
                           </span>
+                          {car.category && (
+                            <span className="text-xs text-blue-300 block">
+                              {car.category.charAt(0).toUpperCase() + car.category.slice(1)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <button
@@ -391,7 +619,7 @@ const CarTheft = () => {
                             ? 'opacity-70 cursor-wait'
                             : isSelling
                             ? 'bg-gray-500 cursor-not-allowed'
-                            : 'hover:bg-green-500 transform hover:scale-105'
+                            : 'hover:bg-green-500 active:bg-green-700 transform hover:scale-105'
                         }`}
                       >
                         {isSellingThis ? (
@@ -405,15 +633,75 @@ const CarTheft = () => {
                 })}
               </ul>
             ) : (
-              <p className="text-center text-gray-400 italic py-5">
-                Garage's looking empty... Hit the streets!
-              </p>
+              <div className="text-center py-8">
+                <FaCarSide className="text-4xl text-blue-500 mx-auto mb-3 opacity-50" />
+                <p className="text-gray-400 italic">Garage's looking empty... Hit the streets!</p>
+              </div>
             )}
           </div>
         )}
       </div>
+
+      <footer className="mt-12 text-center text-gray-500 text-sm">
+        Potato Underworld © {new Date().getFullYear()}. All rights reserved.
+      </footer>
     </div>
   );
 };
+
+// Add these animations to your CSS file or Tailwind config
+const cssAnimations = `
+@keyframes slideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+  40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-slideIn {
+  animation: slideIn 0.3s ease forwards;
+}
+
+.animate-shake {
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.animate-pulse {
+  animation: pulse 1s infinite;
+}
+
+.animate-bounce {
+  animation: bounce 0.5s ease infinite;
+}
+
+.hover\\:scale-102:hover {
+  transform: scale(1.02);
+}
+`;
 
 export default CarTheft;

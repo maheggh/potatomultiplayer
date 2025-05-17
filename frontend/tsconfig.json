@@ -11,6 +11,6 @@
     "outDir": "./dist", // Specify an output directory (e.g., 'dist')
     "rootDir": "./src" // Often good practice to specify source root explicitly
   },
-  "include": ["src/**/*"], // Include everything in src
+  "include": ["src/**/*", "../backend/services/jailService.js", "../backend/services/jailServiceFactory.js"], // Include everything in src
   "exclude": ["node_modules", "dist"] // Exclude node_modules AND the output directory
 }

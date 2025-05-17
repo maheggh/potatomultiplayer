@@ -1,0 +1,66 @@
+// Updated backend/data/cars.js with consistent reduced jail times
+
+// Define all cars in a single place to follow DRY principle
+const allCars = [
+    { name: 'Luxury Spud Sedan', price: 120000, baseChance: 5, image: '/assets/luxury-spud-sedan.png', type: 'car', category: 'luxury' },
+    { name: 'Sporty Tater Coupe', price: 40000, baseChance: 8, image: '/assets/sporty-tater-coupe.png', type: 'car', category: 'sports' },
+    { name: 'Potato Convertible', price: 30000, baseChance: 10, image: '/assets/potato-convertible.png', type: 'car', category: 'luxury' },
+    { name: 'SUV Spud', price: 2000, baseChance: 20, image: '/assets/suv-spud.png', type: 'car', category: 'suv' },
+    { name: 'Hatchback Tuber', price: 1500, baseChance: 20, image: '/assets/hatchback-tuber.png', type: 'car', category: 'standard' },
+    { name: 'Sedan Yam', price: 20000, baseChance: 10, image: '/assets/sedan-yam.png', type: 'car', category: 'standard' },
+    { name: 'SUV Tater', price: 25000, baseChance: 8, image: '/assets/suv-tater.png', type: 'car', category: 'suv' },
+    { name: 'Spudnik Sports', price: 90000, baseChance: 4, image: '/assets/spudnik-sports.png', type: 'car', category: 'sports' },
+    { name: 'Compact Fry', price: 10000, baseChance: 25, image: '/assets/compact-fry.png', type: 'car', category: 'standard' },
+    { name: 'Curly Coupe', price: 15000, baseChance: 20, image: '/assets/curly-coupe.png', type: 'car', category: 'standard' },
+    { name: 'Wedge Wagon', price: 20000, baseChance: 15, image: '/assets/wedge-wagon.png', type: 'car', category: 'standard' },
+    { name: 'Crispy Convertible', price: 110000, baseChance: 5, image: '/assets/crispy-convertible.png', type: 'car', category: 'luxury' },
+    { name: 'Mashed Mini', price: 500, baseChance: 30, image: '/assets/mashed-mini.png', type: 'car', category: 'standard' },
+    { name: 'Buttery Buggy', price: 8000, baseChance: 20, image: '/assets/buttery-buggy.png', type: 'car', category: 'standard' },
+    { name: 'Gravy Sedan', price: 12000, baseChance: 15, image: '/assets/gravy-sedan.png', type: 'car', category: 'standard' },
+    { name: 'Peeler Pickup', price: 18000, baseChance: 5, image: '/assets/peeler-pickup.png', type: 'car', category: 'truck' },
+    { name: 'Root Roadster', price: 7000, baseChance: 30, image: '/assets/root-roadster.png', type: 'car', category: 'standard' },
+    { name: 'Bulb Buggy', price: 10000, baseChance: 25, image: '/assets/bulb-buggy.png', type: 'car', category: 'standard' },
+    { name: 'Starch Sedan', price: 15000, baseChance: 15, image: '/assets/starch-sedan.png', type: 'car', category: 'standard' },
+    { name: 'Tuber Truck', price: 60000, baseChance: 5, image: '/assets/tuber-truck.png', type: 'car', category: 'truck' },
+];
+
+// Define venues with theft difficulty properties using reduced jail times
+const carTheftVenues = {
+  'Rich Potato Neighborhood': {
+    cars: ['Luxury Spud Sedan', 'Potato Convertible', 'Spudnik Sports', 'Crispy Convertible'],
+    difficulty: 'high',
+    jailChance: 30,
+    jailTime: 300, // Reduced from 1800 (30 min) to 300 (5 min)
+    jailReason: 'Attempted grand theft auto in a high security area'
+  },
+  'Spudville Downtown': {
+    cars: ['Sedan Yam', 'Gravy Sedan', 'Sporty Tater Coupe', 'SUV Tater'],
+    difficulty: 'medium',
+    jailChance: 20,
+    jailTime: 180, // Reduced from 1200 (20 min) to 180 (3 min)
+    jailReason: 'Caught stealing a car in downtown Spudville'
+  },
+  'Fries End Suburbs': {
+    cars: ['Starch Sedan', 'Root Roadster', 'SUV Spud', 'Curly Coupe', 'Buttery Buggy'],
+    difficulty: 'medium',
+    jailChance: 15,
+    jailTime: 120, // Reduced from 900 (15 min) to 120 (2 min)
+    jailReason: 'Caught hot-wiring a car in the suburbs'
+  },
+  'Mashy Meadows': {
+    cars: ['Mashed Mini', 'Wedge Wagon', 'Tuber Truck', 'Peeler Pickup'],
+    difficulty: 'low',
+    jailChance: 10,
+    jailTime: 60, // Reduced from 600 (10 min) to 60 (1 min)
+    jailReason: 'Caught attempting to steal a vehicle'
+  },
+  'Tuber Town': {
+    cars: ['Hatchback Tuber', 'Compact Fry', 'Bulb Buggy'],
+    difficulty: 'low',
+    jailChance: 8,
+    jailTime: 30, // Reduced from 300 (5 min) to 30 (30 sec)
+    jailReason: 'Minor vehicle theft attempt'
+  }
+};
+
+module.exports = { allCars, carTheftVenues };

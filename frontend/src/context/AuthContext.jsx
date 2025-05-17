@@ -1,241 +1,276 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
-import jwt_decode from 'jwt-decode';
-import { getRankForXp } from '../utils/rankCalculator';
+import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+const BACKEND_URL = 'http://localhost:5000/api';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState(null);
-  const [money, setMoney] = useState(0);
-  const [xp, setXp] = useState(0);
-  const [rankInfo, setRankInfo] = useState(getRankForXp(0));
-  const [isAlive, setIsAlive] = useState(true);
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
-  const [isInJail, setIsInJail] = useState(false);
-  const [jailEndTime, setJailEndTime] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [money, setMoney] = useState(0);
+  const [xp, setXP] = useState(0);
+  const [rank, setRank] = useState('');
+  const [level, setLevel] = useState(1);
+  const [isAlive, setIsAlive] = useState(true);
   const [inventory, setInventory] = useState([]);
   const [bossItems, setBossItems] = useState([]);
   const [kills, setKills] = useState(0);
+  const [isInJail, setIsInJail] = useState(false);
+  const [jailEndTime, setJailEndTime] = useState(null);
+  const [jailRecord, setJailRecord] = useState(null);
+  const [isCheckingJailStatus, setIsCheckingJailStatus] = useState(false);
 
-  const logout = useCallback(() => {
+  const getAuthHeader = useCallback(() => {
+    const currentToken = localStorage.getItem('token');
+    return currentToken ? { headers: { Authorization: `Bearer ${currentToken}` } } : null;
+  }, []);
+
+  const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
-    localStorage.removeItem('temp_password');
-    localStorage.removeItem('saved_username');
-    localStorage.removeItem('saved_password');
-    setIsLoggedIn(false);
+    setToken(null);
     setUser(null);
+    setIsLoggedIn(false);
     setMoney(0);
-    setXp(0);
-    setRankInfo(getRankForXp(0));
+    setXP(0);
+    setRank('');
+    setLevel(1);
     setIsAlive(true);
-    setIsInJail(false);
-    setJailEndTime(null);
     setInventory([]);
     setBossItems([]);
     setKills(0);
+    setIsInJail(false);
+    setJailEndTime(null);
+    setJailRecord(null);
     setLoading(false);
   }, []);
 
-  const checkAndUpdateJailStatus = useCallback(async () => {
-    const currentToken = localStorage.getItem('token');
-    if (!isLoggedIn || !currentToken) {
-      if (isInJail) setIsInJail(false);
-      if (jailEndTime) setJailEndTime(null);
+  const setUserState = useCallback((userData) => {
+    if (!userData) {
+      handleLogout();
       return;
     }
-    try {
-      const res = await axios.get(`${API_URL}/jail/status`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
-      });
-      if (res.data.success) {
-        const { inJail, jailTimeEnd, released } = res.data;
-        const newEnd = inJail && jailTimeEnd ? new Date(jailTimeEnd) : null;
-        if (inJail !== isInJail) setIsInJail(inJail);
-        if (newEnd?.getTime() !== jailEndTime?.getTime()) setJailEndTime(newEnd);
+    
+    setUser(userData);
+    setMoney(userData.money || 0);
+    setXP(userData.xp || 0);
+    setRank(userData.rank || 'Homeless Potato');
+    setLevel(userData.level || 1);
+    setIsAlive(userData.isAlive !== undefined ? userData.isAlive : true);
+    setInventory(userData.inventory || []);
+    setBossItems(userData.bossItems || []);
+    setKills(userData.kills || 0);
+    setIsLoggedIn(true);
+    
+    if (userData.isInJail) {
+      setIsInJail(true);
+      if (userData.jailTimeEnd) {
+        setJailEndTime(new Date(userData.jailTimeEnd));
       }
-    } catch (error) {
-      if (error.response?.status === 401) {
-        logout();
-      }
+    } else {
+      setIsInJail(false);
+      setJailEndTime(null);
+      setJailRecord(null);
     }
-  }, [isLoggedIn, isInJail, jailEndTime, logout]);
+  }, [handleLogout]);
 
-  const fetchUserData = useCallback(async (token) => {
-    if (!token) {
-      return null;
-    }
+  const checkAndUpdateJailStatus = useCallback(async () => {
+    if (isCheckingJailStatus) return null;
+    
+    const authHeader = getAuthHeader();
+    if (!authHeader) return null;
+    
+    setIsCheckingJailStatus(true);
+    
     try {
-      const headersConfig = { Authorization: `Bearer ${token}` };
-      const res = await axios.get(`${API_URL}/users/profile`, { headers: headersConfig });
-      if (res.data.success) {
-        const d = res.data.userData;
-        setUser({ userId: d.userId, username: d.username });
-        setMoney(d.money || 0);
-        setXp(d.xp || 0);
-        setIsAlive(d.isAlive === true);
-        setRankInfo(getRankForXp(d.xp || 0));
-        setInventory(d.inventory || []);
-        setBossItems(d.bossItems || []);
-        setKills(d.kills || 0);
-        setIsLoggedIn(true);
-        return d;
-      } else {
-        setIsLoggedIn(false);
-        setUser(null);
-        return null;
+      const response = await axios.get(`${BACKEND_URL}/jail/status`, authHeader);
+      
+      if (response.data.success) {
+        const jailStatus = response.data;
+        
+        setIsInJail(jailStatus.inJail);
+        setJailRecord(jailStatus.jailRecord || null);
+        
+        if (jailStatus.inJail && jailStatus.jailRecord?.endTime) {
+          setJailEndTime(new Date(jailStatus.jailRecord.endTime));
+        } else if (jailStatus.inJail && jailStatus.timeRemaining > 0) {
+          const endTime = new Date(Date.now() + jailStatus.timeRemaining * 1000);
+          setJailEndTime(endTime);
+        } else {
+          setJailEndTime(null);
+        }
+        
+        return jailStatus;
       }
     } catch (error) {
       if (error.response?.status === 401) {
-        logout();
-      } else {
-        setIsLoggedIn(false);
-        setUser(null);
+        handleLogout();
       }
-      return null;
+    } finally {
+      setTimeout(() => {
+        setIsCheckingJailStatus(false);
+      }, 3000);
     }
-  }, [logout]);
+    
+    return null;
+  }, [getAuthHeader, handleLogout]);
 
   useEffect(() => {
-    let mounted = true;
-    const initAuth = async () => {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      let fetchedUser = null;
-      if (token) {
-        try {
-          const decoded = jwt_decode(token);
-          if (decoded.exp * 1000 < Date.now()) {
-            logout();
-          } else {
-            fetchedUser = await fetchUserData(token);
-            if (fetchedUser && mounted) {
-              await checkAndUpdateJailStatus();
-            } else if (!fetchedUser) {
-              if (isLoggedIn) logout();
-            }
-          }
-        } catch {
-          logout();
-        }
-      } else {
-        setIsLoggedIn(false);
-        setUser(null);
+    let isMounted = true;
+    
+    const fetchInitialData = async () => {
+      const currentToken = localStorage.getItem('token');
+      if (!currentToken) {
+        if (isMounted) handleLogout();
+        return;
       }
-      if (mounted) setLoading(false);
-    };
-    initAuth();
-    return () => { mounted = false; };
-  }, [fetchUserData, checkAndUpdateJailStatus, logout, isLoggedIn]);
 
-  const login = useCallback(async (token, generatedPassword = null) => {
-    localStorage.setItem('token', token);
-    localStorage.removeItem('temp_password');
-    if (generatedPassword) {
-      localStorage.setItem('temp_password', generatedPassword);
-    }
+      if (isMounted) setLoading(true);
+      const authHeader = { headers: { Authorization: `Bearer ${currentToken}` } };
+
+      try {
+        const response = await axios.get(`${BACKEND_URL}/users/me`, authHeader);
+        
+        if (!isMounted) return;
+        
+        if (response.data.success && response.data.userData) {
+          setUserState(response.data.userData);
+          if (response.data.userData.isInJail && !isCheckingJailStatus) {
+            setTimeout(() => {
+              if (isMounted) checkAndUpdateJailStatus();
+            }, 500);
+          }
+        } else {
+          if (isMounted) handleLogout();
+        }
+      } catch (error) {
+        if (isMounted) handleLogout();
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchInitialData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [token, handleLogout, setUserState]);
+
+  const register = useCallback(async () => {
     setLoading(true);
-    setIsLoggedIn(false);
-    setUser(null);
-    let userData = null;
     try {
-      userData = await fetchUserData(token);
-      if (userData) {
-        await checkAndUpdateJailStatus();
-        if (generatedPassword && userData.username) {
-          localStorage.setItem('saved_username', userData.username);
-          localStorage.setItem('saved_password', generatedPassword);
-        }
+      const response = await axios.post(`${BACKEND_URL}/users/register`, {});
+      if (response.data.success && response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        setToken(response.data.token);
+        return {
+          success: true,
+          generatedPassword: response.data.userData?.generatedPassword,
+          username: response.data.userData?.username
+        };
+      } else {
+        throw new Error(response.data.message || 'Registration failed');
       }
-    } catch {
-      userData = null;
+    } catch (error) {
+      handleLogout();
+      throw error.response?.data?.message || error.message || 'Registration failed';
     } finally {
-      if (!userData) {
-        if (isLoggedIn || user != null) {
-          logout();
-        }
-      }
       setLoading(false);
     }
-  }, [fetchUserData, checkAndUpdateJailStatus, logout, isLoggedIn, user]);
+  }, [handleLogout]);
 
-  const updateUserData = useCallback(async (updated) => {
-    const token = localStorage.getItem('token');
-    if (!isLoggedIn || !token || !user) {
-      return;
+  const login = useCallback(async (providedToken, generatedPassword) => {
+    setLoading(true);
+    if (providedToken) {
+      localStorage.setItem('token', providedToken);
+      if (generatedPassword && localStorage.getItem('saved_username')) {
+        localStorage.setItem('saved_password', generatedPassword);
+      }
+      setToken(providedToken);
+      return { success: true };
+    } else {
+      const username = localStorage.getItem('saved_username');
+      const password = localStorage.getItem('saved_password');
+      
+      if (username && password) {
+        try {
+          const response = await axios.post(`${BACKEND_URL}/users/login`, { username, password });
+          if (response.data.success && response.data.token) {
+            localStorage.setItem('token', response.data.token);
+            setToken(response.data.token);
+            return { success: true };
+          }
+        } catch (error) {
+          console.error('Error logging in with saved credentials:', error.message);
+        }
+      }
+      
+      setLoading(false);
+      return { success: false, message: "No login credentials available" };
     }
-    if (updated.hasOwnProperty('money')) setMoney(updated.money);
-    if (updated.hasOwnProperty('xp')) {
-      setXp(updated.xp);
-      setRankInfo(getRankForXp(updated.xp));
+  }, []);
+
+  const updateUserData = useCallback((updatedData) => {
+    setUser(prev => prev ? { ...prev, ...updatedData } : null);
+    if (updatedData.money !== undefined) setMoney(updatedData.money);
+    if (updatedData.xp !== undefined) setXP(updatedData.xp);
+    if (updatedData.rank !== undefined) setRank(updatedData.rank);
+    if (updatedData.level !== undefined) setLevel(updatedData.level);
+    if (updatedData.isAlive !== undefined) setIsAlive(updatedData.isAlive);
+    if (updatedData.inventory !== undefined) setInventory(updatedData.inventory);
+    if (updatedData.bossItems !== undefined) setBossItems(updatedData.bossItems);
+    if (updatedData.kills !== undefined) setKills(updatedData.kills);
+    
+    if (updatedData.inJail !== undefined) {
+      setIsInJail(updatedData.inJail);
+      if (updatedData.jailTimeEnd) {
+        setJailEndTime(new Date(updatedData.jailTimeEnd));
+      } else if (!updatedData.inJail) {
+        setJailEndTime(null);
+        setJailRecord(null);
+      }
     }
-    if (updated.hasOwnProperty('isAlive')) setIsAlive(updated.isAlive === true);
-    if (updated.hasOwnProperty('inventory')) setInventory(updated.inventory);
-    if (updated.hasOwnProperty('bossItems')) setBossItems(updated.bossItems);
-    if (updated.hasOwnProperty('kills')) setKills(updated.kills);
+  }, []);
+
+  const refreshUserData = useCallback(async () => {
+    const authHeader = getAuthHeader();
+    if (!authHeader || !isLoggedIn) return;
+    
+    setLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/users/update`, updated, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.data.success) {
-        await fetchUserData(token);
+      const response = await axios.get(`${BACKEND_URL}/users/me`, authHeader);
+      if (response.data.success && response.data.userData) {
+        setUserState(response.data.userData);
       }
     } catch (error) {
       if (error.response?.status === 401) {
-        logout();
-      } else {
-        await fetchUserData(token);
+        handleLogout();
       }
+    } finally {
+      setLoading(false);
     }
-  }, [isLoggedIn, user, logout, fetchUserData]);
+  }, [getAuthHeader, isLoggedIn, setUserState, handleLogout]);
 
-  useEffect(() => {
-    let intervalId = null;
-    let visListener = null;
-    let focusListener = null;
-    if (isLoggedIn) {
-      checkAndUpdateJailStatus();
-      intervalId = setInterval(checkAndUpdateJailStatus, 30000);
-      visListener = () => {
-        if (document.visibilityState === 'visible') {
-          checkAndUpdateJailStatus();
-        }
-      };
-      document.addEventListener('visibilitychange', visListener);
-      focusListener = () => {
-        checkAndUpdateJailStatus();
-      };
-      window.addEventListener('focus', focusListener);
-    }
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-      if (visListener) document.removeEventListener('visibilitychange', visListener);
-      if (focusListener) window.removeEventListener('focus', focusListener);
-    };
-  }, [isLoggedIn, checkAndUpdateJailStatus]);
+  const contextValue = useMemo(() => ({
+    user, token, loading, isLoggedIn,
+    money, xp, rank, level, isAlive, inventory, bossItems, kills,
+    isInJail, jailEndTime, jailRecord,
+    register, login, logout: handleLogout,
+    updateUserData, refreshUserData, checkAndUpdateJailStatus
+  }), [
+    user, token, loading, isLoggedIn,
+    money, xp, rank, level, isAlive, inventory, bossItems, kills,
+    isInJail, jailEndTime, jailRecord,
+    register, login, handleLogout,
+    updateUserData, refreshUserData, checkAndUpdateJailStatus
+  ]);
 
-  const contextValue = {
-    isLoggedIn,
-    user,
-    money,
-    xp,
-    rank: rankInfo.currentRank,
-    rankInfo,
-    isAlive,
-    loading,
-    isInJail,
-    jailEndTime,
-    inventory,
-    bossItems,
-    kills,
-    login,
-    logout,
-    updateUserData,
-    checkAndUpdateJailStatus,
-  };
-
-  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={contextValue}>
+      {children}
+    </AuthContext.Provider>
+  );
 };

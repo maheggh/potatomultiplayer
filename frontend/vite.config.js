@@ -1,19 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import commonjs from 'vite-plugin-commonjs';
 
+// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    commonjs()
-  ],
+  plugins: [react()],
   server: {
+    port: 3000,
     proxy: {
+      // Explicit proxy configuration
       '/api': {
-        target: process.env.VITE_BACKEND_URL || 'http://localhost:5000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
-      },
+        rewrite: (path) => path.replace(/^\/api/, '/api')
+      }
     },
-  },
+    cors: true
+  }
 });
