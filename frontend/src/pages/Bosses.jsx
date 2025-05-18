@@ -4,9 +4,8 @@ import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import { FaSpinner } from 'react-icons/fa';
 
-// Import components directly from their files
-// Make sure these paths match your project structure
-import BossList from '../components/boss-components/BossList';
+
+import BossList from '../components/Boss-components/BossList';
 import BossDetails from '../components/boss-components/BossDetails';
 import BattleControls from '../components/boss-components/BattleControls';
 import BattleResultModal from '../components/boss-components/BattleResultModal';
