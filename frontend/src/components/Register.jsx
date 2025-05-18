@@ -1,6 +1,6 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { FaUserPlus, FaCheckCircle, FaTimesCircle, FaEye, FaEyeSlash } from 'react-icons/fa';
 import axios from 'axios';
 
@@ -10,7 +10,7 @@ const BACKEND_URL = import.meta.env.PROD
   : (import.meta.env.VITE_API_URL || 'http://localhost:5000/api');
 
 const Register = () => {
-  const { login } = useContext(AuthContext);
+  const { login, isLoggedIn } = useContext(AuthContext);
   const [message, setMessage] = useState(null);
   const [isRegistering, setIsRegistering] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState(null);
@@ -18,6 +18,15 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [saveCredentials, setSaveCredentials] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // If already logged in, redirect to home page
+  useEffect(() => {
+    if (isLoggedIn) {
+      console.log("Register: User is already logged in, redirecting to home");
+      navigate('/', { replace: true });
+    }
+  }, [isLoggedIn, navigate]);
 
   const handleRegistration = async () => {
     setIsRegistering(true);
@@ -26,11 +35,11 @@ const Register = () => {
     setGeneratedUsername(null);
 
     try {
-      console.log("Making direct request to backend at:", `${BACKEND_URL}/users/register`);
+      console.log("Register: Making registration request to:", `${BACKEND_URL}/users/register`);
       
       // Make direct API call to the backend, bypassing the proxy
       const response = await axios.post(`${BACKEND_URL}/users/register`, {});
-      console.log("Register Component: Response from API:", response.data);
+      console.log("Register: Response from API:", response.data);
       
       if (response.data.success && response.data.token) {
         // Save the generated credentials
@@ -51,8 +60,16 @@ const Register = () => {
           text: 'Account generated successfully! Save your login details before continuing.' 
         });
         
+        // Store the token in localStorage
+        localStorage.setItem('token', response.data.token);
+        
         // Call the login function with the token
-        await login(response.data.token, password);
+        console.log("Register: Calling login function with token...");
+        const loginResult = await login(response.data.token, password);
+        console.log("Register: Login result:", loginResult);
+        
+        // At this point, login should have updated isLoggedIn state
+        // The useEffect above will handle the redirect
       } else {
         throw new Error(response.data.message || 'Registration failed');
       }
@@ -68,7 +85,10 @@ const Register = () => {
   };
 
   const handleContinue = () => {
-    navigate('/');
+    // Add redirect state if available from the location
+    const from = location.state?.from?.pathname || '/';
+    console.log("Register: Continue clicked, navigating to:", from);
+    navigate(from, { replace: true });
   };
 
   return (

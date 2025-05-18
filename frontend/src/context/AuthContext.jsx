@@ -184,26 +184,58 @@ export const AuthProvider = ({ children }) => {
     }
   }, [handleLogout]);
 
-  const login = useCallback(async (providedToken, generatedPassword) => {
-    setLoading(true);
+const login = useCallback(async (providedToken, generatedPassword) => {
+  setLoading(true);
+  console.log("AuthContext: Login called with token:", !!providedToken);
+  
+  try {
     if (providedToken) {
       localStorage.setItem('token', providedToken);
+      
       if (generatedPassword && localStorage.getItem('saved_username')) {
         localStorage.setItem('saved_password', generatedPassword);
       }
+      
       setToken(providedToken);
-      return { success: true };
+      
+      // Fetch user data to complete the login
+      const authHeader = { headers: { Authorization: `Bearer ${providedToken}` } };
+      console.log("AuthContext: Fetching user data with token");
+      
+      const response = await axios.get(`${BACKEND_URL}/users/me`, authHeader);
+      
+      if (response.data.success && response.data.userData) {
+        console.log("AuthContext: User data fetched successfully");
+        setUserState(response.data.userData);
+        // This will also set isLoggedIn to true via setUserState
+        
+        return { success: true };
+      } else {
+        console.error("AuthContext: Failed to fetch user data");
+        throw new Error(response.data.message || 'Failed to fetch user data');
+      }
     } else {
       const username = localStorage.getItem('saved_username');
       const password = localStorage.getItem('saved_password');
       
       if (username && password) {
         try {
+          console.log("AuthContext: Attempting login with saved credentials");
           const response = await axios.post(`${BACKEND_URL}/users/login`, { username, password });
+          
           if (response.data.success && response.data.token) {
             localStorage.setItem('token', response.data.token);
             setToken(response.data.token);
-            return { success: true };
+            
+            // Fetch user data to complete the login
+            const authHeader = { headers: { Authorization: `Bearer ${response.data.token}` } };
+            
+            const userResponse = await axios.get(`${BACKEND_URL}/users/me`, authHeader);
+            
+            if (userResponse.data.success && userResponse.data.userData) {
+              setUserState(userResponse.data.userData);
+              return { success: true };
+            }
           }
         } catch (error) {
           console.error('Error logging in with saved credentials:', error.message);
@@ -213,7 +245,14 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
       return { success: false, message: "No login credentials available" };
     }
-  }, []);
+  } catch (error) {
+    console.error("AuthContext: Login error:", error);
+    handleLogout();
+    return { success: false, message: error.message || 'Login failed' };
+  } finally {
+    setLoading(false);
+  }
+}, [BACKEND_URL, handleLogout, setUserState]);
 
   const updateUserData = useCallback((updatedData) => {
     setUser(prev => prev ? { ...prev, ...updatedData } : null);
