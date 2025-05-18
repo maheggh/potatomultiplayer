@@ -1,9 +1,24 @@
-// routes/carRoutes.js
+// backend/routes/carRoutes.js
 const express = require('express');
 const router = express.Router();
-const carController = require('../controllers/carController'); // Ensure this is correct
+const carController = require('../controllers/carController');
 
-// Route for fetching cars
-router.get('/', carController.getCarsInventory); // This should map to the controller method
+// Get all cars
+router.get('/', carController.getCarsInventory);
+
+// Get a specific car by ID
+router.get('/:id', carController.getCarById);
+
+// Create a new car
+router.post('/', carController.createCar);
+
+// Update an existing car
+router.put('/:id', carController.updateCar);
+
+// Delete a car
+router.delete('/:id', carController.deleteCar);
+
+// Seed the database with predefined cars
+router.post('/seed', carController.seedCars);
 
 module.exports = router;

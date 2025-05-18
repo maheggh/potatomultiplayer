@@ -118,11 +118,26 @@ const CarTheft = () => {
     token ? { headers: { Authorization: `Bearer ${token}` } } : null,
   [token]);
 
-  // Optimized calculation function
+  // Updated success chance calculation function with diminishing returns
   const calculateSuccessDisplayChance = useCallback((baseChance, userLevel) => {
-    const levelBonus = (userLevel || 1) * 0.8; // Reduced bonus from 1.5 to 0.8
+    // Match the server-side calculation for consistency
+    let levelBonus = 0;
+    if (userLevel) {
+      // First 5 levels add 1% each
+      const baseLevels = Math.min(5, userLevel);
+      levelBonus += baseLevels;
+      
+      // Levels 6-15 add 0.5% each
+      const midLevels = Math.max(0, Math.min(10, userLevel - 5));
+      levelBonus += midLevels * 0.5;
+      
+      // Levels above 15 add 0.2% each
+      const highLevels = Math.max(0, userLevel - 15);
+      levelBonus += highLevels * 0.2;
+    }
+    
     const rawChance = baseChance + levelBonus;
-    return Math.max(5, Math.min(rawChance, 85)).toFixed(1); // Capped at 85% instead of 95%
+    return Math.max(5, Math.min(rawChance, 85)).toFixed(1);
   }, []);
 
   // Fetch venues and cars data

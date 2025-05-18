@@ -1,4 +1,4 @@
-// Fixed JailStatus with Improved Design Integration
+// Fixed JailStatus without localStorage persistence
 
 import React, { useEffect, useContext, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
@@ -6,47 +6,25 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-// Store attempted breakout in localStorage to persist across page changes
-const BREAKOUT_STORAGE_KEY = 'jail_breakout_attempted';
-const MESSAGE_STORAGE_KEY = 'jail_breakout_message';
-const SUCCESS_STORAGE_KEY = 'jail_breakout_success';
-
 const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
   const authContext = useContext(AuthContext);
   
   // Use either props or context values
   const contextToken = token || authContext.token;
-  const { isInJail, jailEndTime: contextJailEndTime } = authContext;
+  const { isInJail, jailEndTime: contextJailEndTime, jailRecord } = authContext;
   
-  // Use localStorage to persist breakout state
-  const [breakoutState, setBreakoutState] = useState(() => {
-    try {
-      return {
-        attempting: localStorage.getItem(BREAKOUT_STORAGE_KEY) === 'true',
-        message: localStorage.getItem(MESSAGE_STORAGE_KEY) || '',
-        success: localStorage.getItem(SUCCESS_STORAGE_KEY) === 'true'
-      };
-    } catch (e) {
-      console.error("Error reading from localStorage:", e);
-      return { attempting: false, message: '', success: false };
-    }
+  // State for breakout (won't persist on refresh)
+  const [breakoutState, setBreakoutState] = useState({
+    attempting: false,
+    message: '',
+    success: false
   });
-  
-  // Save breakout state to localStorage when it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem(BREAKOUT_STORAGE_KEY, breakoutState.attempting.toString());
-      localStorage.setItem(MESSAGE_STORAGE_KEY, breakoutState.message || '');
-      localStorage.setItem(SUCCESS_STORAGE_KEY, breakoutState.success.toString());
-    } catch (e) {
-      console.error("Error writing to localStorage:", e);
-    }
-  }, [breakoutState]);
   
   // Container ref to inject our timer into
   const timeDisplayRef = useRef(null);
   const progressBarRef = useRef(null);
   const timerInitialized = useRef(false);
+  const breakoutAttemptMade = useRef(false);
   
   // Initialize once
   useEffect(() => {
@@ -94,10 +72,13 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
         if (response.data && response.data.inJail) {
           // Check if breakout was already attempted from API
           if (response.data.breakoutAttempted) {
+            breakoutAttemptMade.current = true;
             setBreakoutState(prev => ({
               ...prev,
               attempting: true,
-              message: 'Breakout already attempted'
+              message: response.data.breakoutSuccessful 
+                ? 'Breakout successful! You are free!'
+                : 'Breakout attempt failed! Security increased!'
             }));
           }
           
@@ -221,25 +202,32 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
     };
   }, [isInJail, contextJailEndTime, contextToken, onUpdateJailStatus, onRelease]);
   
-  // Reset jail state when released
+  // Reset jailStatus when the component is unmounted
+  useEffect(() => {
+    return () => {
+      timerInitialized.current = false;
+      breakoutAttemptMade.current = false;
+    };
+  }, []);
+  
+  // Reset state when user is not in jail
   useEffect(() => {
     if (!isInJail) {
-      // Clear storage too
-      try {
-        localStorage.removeItem(BREAKOUT_STORAGE_KEY);
-        localStorage.removeItem(MESSAGE_STORAGE_KEY);
-        localStorage.removeItem(SUCCESS_STORAGE_KEY);
-      } catch (e) {
-        console.error("Error clearing localStorage:", e);
-      }
+      breakoutAttemptMade.current = false;
+      setBreakoutState({
+        attempting: false,
+        message: '',
+        success: false
+      });
     }
   }, [isInJail]);
   
   // Breakout button handler
   const attemptBreakout = async () => {
-    if (breakoutState.attempting || !contextToken) return;
+    if (breakoutState.attempting || !contextToken || breakoutAttemptMade.current) return;
     
     setBreakoutState({ ...breakoutState, attempting: true });
+    breakoutAttemptMade.current = true;
     
     try {
       const response = await axios.post(
