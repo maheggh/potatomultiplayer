@@ -5,7 +5,9 @@ import { FaUserPlus, FaCheckCircle, FaTimesCircle, FaEye, FaEyeSlash } from 'rea
 import axios from 'axios';
 
 // Direct URL to your backend - adjust if needed
-const BACKEND_URL = 'http://localhost:5000/api';
+const BACKEND_URL = import.meta.env.PROD 
+  ? '/api'  // In production, use relative URL
+  : (import.meta.env.VITE_API_URL || 'http://localhost:5000/api');
 
 const Register = () => {
   const { login } = useContext(AuthContext);
