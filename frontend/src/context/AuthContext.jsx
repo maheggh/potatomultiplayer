@@ -1,7 +1,9 @@
 import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 
-const BACKEND_URL = 'http://localhost:5000/api';
+const BACKEND_URL = import.meta.env.PROD 
+  ? '/api'  // In production, use relative URL
+  : (import.meta.env.VITE_API_URL || 'http://localhost:5000/api');
 
 export const AuthContext = createContext();
 
