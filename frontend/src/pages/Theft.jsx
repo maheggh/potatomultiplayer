@@ -402,7 +402,7 @@ const Theft = () => {
                       <FaPercentage className="text-cyan-400" /> 
                       <span className="font-medium text-cyan-300">{chance}%</span>
                     </div>
-                    <div className="h-32 mb-4 flex items-center justify-center bg-gray-800/50 rounded-lg overflow-hidden p-2">
+                    <div className="h-48 mb-4 flex items-center justify-center bg-gray-800/50 rounded-lg overflow-hidden p-2">
                       <img 
                         src={details.image} 
                         alt={name} 

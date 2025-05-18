@@ -1,10 +1,15 @@
-// VanillaJS JailTimer with Better Styling
+// Fixed JailStatus with Improved Design Integration
 
-import React, { useEffect, useContext, useRef } from 'react';
+import React, { useEffect, useContext, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+// Store attempted breakout in localStorage to persist across page changes
+const BREAKOUT_STORAGE_KEY = 'jail_breakout_attempted';
+const MESSAGE_STORAGE_KEY = 'jail_breakout_message';
+const SUCCESS_STORAGE_KEY = 'jail_breakout_success';
 
 const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
   const authContext = useContext(AuthContext);
@@ -13,13 +18,39 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
   const contextToken = token || authContext.token;
   const { isInJail, jailEndTime: contextJailEndTime } = authContext;
   
+  // Use localStorage to persist breakout state
+  const [breakoutState, setBreakoutState] = useState(() => {
+    try {
+      return {
+        attempting: localStorage.getItem(BREAKOUT_STORAGE_KEY) === 'true',
+        message: localStorage.getItem(MESSAGE_STORAGE_KEY) || '',
+        success: localStorage.getItem(SUCCESS_STORAGE_KEY) === 'true'
+      };
+    } catch (e) {
+      console.error("Error reading from localStorage:", e);
+      return { attempting: false, message: '', success: false };
+    }
+  });
+  
+  // Save breakout state to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(BREAKOUT_STORAGE_KEY, breakoutState.attempting.toString());
+      localStorage.setItem(MESSAGE_STORAGE_KEY, breakoutState.message || '');
+      localStorage.setItem(SUCCESS_STORAGE_KEY, breakoutState.success.toString());
+    } catch (e) {
+      console.error("Error writing to localStorage:", e);
+    }
+  }, [breakoutState]);
+  
   // Container ref to inject our timer into
-  const containerRef = useRef(null);
+  const timeDisplayRef = useRef(null);
+  const progressBarRef = useRef(null);
   const timerInitialized = useRef(false);
   
   // Initialize once
   useEffect(() => {
-    if (!isInJail || !containerRef.current || timerInitialized.current) return;
+    if (!isInJail || !progressBarRef.current || !timeDisplayRef.current || timerInitialized.current) return;
     
     timerInitialized.current = true;
     let endTime = null;
@@ -39,55 +70,6 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
       }
     }
     
-    // Create timer element
-    const timerElement = document.createElement('div');
-    timerElement.className = 'jail-timer-standalone';
-    timerElement.innerHTML = `
-      <div class="progress-container">
-        <div class="progress-bar"></div>
-      </div>
-      <div class="time-display">00:00</div>
-    `;
-    
-    // Add styles (matched to your original design)
-    const styles = document.createElement('style');
-    styles.textContent = `
-      .jail-timer-standalone {
-        width: 100%;
-        margin-bottom: 10px;
-      }
-      .time-display {
-        font-size: 18px;
-        font-weight: 500;
-        text-align: center;
-        color: white;
-        margin-top: 4px;
-      }
-      .progress-container {
-        width: 100%;
-        height: 16px;
-        background-color: rgb(55, 65, 81);
-        border-radius: 9999px;
-        overflow: hidden;
-        margin-top: 12px;
-        margin-bottom: 4px;
-      }
-      .progress-bar {
-        height: 100%;
-        background: linear-gradient(to right, #ef4444, #f59e0b);
-        width: 0%;
-        transition: width 1000ms linear;
-      }
-    `;
-    
-    // Add to container
-    containerRef.current.appendChild(styles);
-    containerRef.current.appendChild(timerElement);
-    
-    // Get references to elements
-    const timeDisplay = timerElement.querySelector('.time-display');
-    const progressBar = timerElement.querySelector('.progress-bar');
-    
     // Format time function
     const formatTime = (seconds) => {
       const mins = Math.floor(seconds / 60);
@@ -100,7 +82,7 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
       if (!contextToken) return;
       
       try {
-        console.log("Standalone timer fetching jail status");
+        console.log("Fetching jail status");
         
         const response = await axios.get(
           `${API_URL}/jail/status`,
@@ -110,14 +92,39 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
         if (!isMounted) return;
         
         if (response.data && response.data.inJail) {
+          // Check if breakout was already attempted from API
+          if (response.data.breakoutAttempted) {
+            setBreakoutState(prev => ({
+              ...prev,
+              attempting: true,
+              message: 'Breakout already attempted'
+            }));
+          }
+          
+          // Get jail times from record
           if (response.data.jailRecord?.startTime && response.data.jailRecord?.endTime) {
             const startTime = new Date(response.data.jailRecord.startTime);
             const receivedEndTime = new Date(response.data.jailRecord.endTime);
             
             if (!isNaN(startTime.getTime()) && !isNaN(receivedEndTime.getTime())) {
               endTime = receivedEndTime;
+              
+              // Calculate total duration (always use the full sentence duration)
               initialJailTime = Math.floor((receivedEndTime - startTime) / 1000);
               console.log("Using jail record times:", initialJailTime);
+              
+              // First update - set progress bar immediately
+              const now = new Date();
+              const elapsed = Math.floor((now - startTime) / 1000);
+              const progress = Math.min(100, Math.max(0, 
+                (elapsed / initialJailTime) * 100
+              ));
+              
+              progressBarRef.current.style.transition = 'none'; // Disable transition for initial set
+              progressBarRef.current.style.width = `${progress}%`;
+              // Force reflow to make the transition removal take effect
+              void progressBarRef.current.offsetWidth;
+              progressBarRef.current.style.transition = 'width 1s linear'; // Re-enable transition
             }
           } else if (response.data.timeRemaining > 0) {
             const remainingTime = response.data.timeRemaining;
@@ -148,26 +155,30 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
         return;
       }
       
-      console.log("Starting standalone timer with end time:", endTime);
+      console.log("Starting timer with end time:", endTime);
       
       let timerInterval = null;
+      let lastProgressUpdate = 0;
       
       const updateTimer = () => {
         if (!isMounted) return;
         
         const now = new Date();
+        const elapsed = Math.max(0, initialJailTime - Math.floor((endTime - now) / 1000));
         const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
         
         // Update time display
-        if (timeDisplay) {
-          timeDisplay.textContent = `Time remaining: ${formatTime(remaining)}`;
+        if (timeDisplayRef.current) {
+          timeDisplayRef.current.textContent = formatTime(remaining);
         }
         
-        // Update progress bar
-        if (progressBar && initialJailTime) {
-          const progress = 100 - (remaining / initialJailTime * 100);
-          const clampedProgress = Math.min(100, Math.max(0, progress));
-          progressBar.style.width = `${clampedProgress}%`;
+        // Update progress bar - only if enough time has passed to avoid jumpiness
+        // or if we're at the end
+        if (progressBarRef.current && initialJailTime && 
+            (Math.abs(elapsed - lastProgressUpdate) >= 1 || remaining <= 0)) {
+          const progress = Math.min(100, Math.max(0, (elapsed / initialJailTime) * 100));
+          progressBarRef.current.style.width = `${progress}%`;
+          lastProgressUpdate = elapsed;
         }
         
         // Check if time is up
@@ -207,21 +218,24 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
     return () => {
       isMounted = false;
       timerInitialized.current = false;
-      
-      // Remove elements
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
-      }
     };
   }, [isInJail, contextJailEndTime, contextToken, onUpdateJailStatus, onRelease]);
   
-  // Breakout button handling
-  const [breakoutState, setBreakoutState] = React.useState({
-    attempting: false,
-    message: '',
-    success: false
-  });
+  // Reset jail state when released
+  useEffect(() => {
+    if (!isInJail) {
+      // Clear storage too
+      try {
+        localStorage.removeItem(BREAKOUT_STORAGE_KEY);
+        localStorage.removeItem(MESSAGE_STORAGE_KEY);
+        localStorage.removeItem(SUCCESS_STORAGE_KEY);
+      } catch (e) {
+        console.error("Error clearing localStorage:", e);
+      }
+    }
+  }, [isInJail]);
   
+  // Breakout button handler
   const attemptBreakout = async () => {
     if (breakoutState.attempting || !contextToken) return;
     
@@ -254,7 +268,7 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
       console.error('Breakout error:', error);
       setBreakoutState({
         ...breakoutState,
-        attempting: false,
+        attempting: true,
         message: 'Error attempting breakout'
       });
     }
@@ -264,50 +278,65 @@ const JailStatus = ({ onRelease, onUpdateJailStatus, token = null }) => {
   if (!isInJail) return null;
   
   return (
-    <div className="p-4 bg-yellow-800 border-l-4 border-yellow-500 text-white rounded-lg shadow-lg flex flex-col items-center text-center w-full max-w-md mx-auto">
-      <div className="mb-2 text-yellow-300 text-xl">
-        <span role="img" aria-label="jail">🔒</span> Potato Jail
+    <div className="bg-gray-900/80 rounded-lg border border-yellow-900/50 shadow-lg text-white p-4 mb-6 overflow-hidden">
+      <div className="flex items-center justify-center mb-2">
+        <span role="img" aria-label="jail" className="text-2xl mr-2">🔒</span>
+        <h2 className="text-xl font-bold text-yellow-400">Potato Jail</h2>
       </div>
       
-      <p className="text-xl font-semibold">You are in jail!</p>
+      <p className="text-lg font-medium mb-3 text-center">You are in jail!</p>
       
-      {/* Injected timer container */}
-      <div ref={containerRef} className="w-full"></div>
+      {/* Progress bar */}
+      <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden">
+        <div 
+          ref={progressBarRef}
+          className="h-full bg-gradient-to-r from-red-500 to-yellow-500"
+          style={{ 
+            width: "0%", 
+            transition: "width 1s linear"
+          }}
+        ></div>
+      </div>
       
-      <img
-        src="/assets/potatojail.png"
-        alt="Potato in Jail"
-        className="w-60 h-60 object-cover mt-4 rounded-md border-2 border-yellow-600"
-        onError={(e) => { e.target.onerror = null; e.target.src='/assets/error.png'; }}
-        loading="lazy"
-      />
+      {/* Time display */}
+      <p className="text-center mt-1 mb-3">
+        Time remaining: <span ref={timeDisplayRef} className="font-medium">0:00</span>
+      </p>
+      
+      <div className="flex justify-center mb-3">
+        <img
+          src="/assets/potatojail.png"
+          alt="Potato in Jail"
+          className="w-32 h-32 object-contain rounded-md border border-yellow-900/30"
+          onError={(e) => { e.target.onerror = null; e.target.src='/assets/error.png'; }}
+          loading="lazy"
+        />
+      </div>
       
       {breakoutState.message ? (
-        <div className={`mt-4 font-medium px-4 py-2 rounded-lg ${
-          breakoutState.success ? 'bg-green-700/60 text-green-100' : 'bg-red-700/60 text-red-100'
+        <div className={`text-center p-3 rounded mb-3 font-medium ${
+          breakoutState.success ? 'bg-green-800/60 text-green-100' : 'bg-red-800/60 text-red-100'
         }`}>
           {breakoutState.message}
         </div>
       ) : (
-        <div className="mt-4 flex flex-col items-center">
+        <div className="flex flex-col items-center mb-3">
           <button
             onClick={attemptBreakout}
             disabled={breakoutState.attempting}
-            className="px-6 py-2 bg-red-600 text-white font-semibold rounded-md shadow hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2 bg-red-600 text-white font-semibold rounded shadow hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {breakoutState.attempting ? 'Attempting...' : 'Attempt Breakout'}
           </button>
-          <p className="text-sm mt-2 text-yellow-200/80">
+          <p className="text-xs mt-2 text-yellow-300/80">
             Attempting a breakout has a good chance of success!
           </p>
         </div>
       )}
       
-      <div className="text-xs mt-4 text-gray-300 px-4 text-center">
+      <p className="text-xs text-gray-400 text-center">
         If you fail your breakout attempt, you'll still have to serve your full sentence.
-        <br/>
-        Sometimes it's better to just wait it out!
-      </div>
+      </p>
     </div>
   );
 };

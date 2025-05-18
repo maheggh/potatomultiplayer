@@ -1,3 +1,4 @@
+// routes/bossesRoutes.js
 const express = require('express');
 const router = express.Router();
 const bossesController = require('../controllers/bossesController');

@@ -240,59 +240,6 @@ const Home = () => {
           </div>
         </div>
 
-        {isLoggedIn && (
-          <div className="mt-12">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center">
-              <FaInfoCircle className="mr-2 text-purple-400" />
-              Criminal Activities
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {gameSections.map((section, index) => (
-                <Link
-                  key={index}
-                  to={section.to}
-                  className={`p-4 rounded-lg border bg-gradient-to-br ${section.color} ${section.borderColor} hover:shadow-lg hover:-translate-y-1 transition-all duration-300`}
-                >
-                  <div className="flex items-start">
-                    <div className="mr-4 pt-1">
-                      {section.icon}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white text-lg mb-1">{section.title}</h3>
-                      <p className="text-gray-300 text-sm">{section.description}</p>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!isLoggedIn && (
-          <div className="mt-12 bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-xl p-6 text-center">
-            <h2 className="text-3xl font-semibold mb-6 text-purple-300">Game Features</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-              <div className="bg-gray-700/60 p-4 rounded-lg shadow border border-purple-700/30">
-                <h3 className="font-bold text-xl mb-2 text-orange-300">💰 Theft & Gambling</h3>
-                <p className="text-gray-300 text-sm">Risk it all in high-stakes heists and gamble your fortunes.</p>
-              </div>
-              <div className="bg-gray-700/60 p-4 rounded-lg shadow border border-purple-700/30">
-                <h3 className="font-bold text-xl mb-2 text-red-300">🔫 Assassinations</h3>
-                <p className="text-gray-300 text-sm">Take down rivals and claim their riches to rise to the top.</p>
-              </div>
-              <div className="bg-gray-700/60 p-4 rounded-lg shadow border border-purple-700/30">
-                <h3 className="font-bold text-xl mb-2 text-purple-300">👑 Boss Battles</h3>
-                <p className="text-gray-300 text-sm">Fight legendary potato bosses and collect rare treasures.</p>
-              </div>
-              <div className="bg-gray-700/60 p-4 rounded-lg shadow border border-purple-700/30">
-                <h3 className="font-bold text-xl mb-2 text-blue-300">🏎️ Car Races & Thefts</h3>
-                <p className="text-gray-300 text-sm">Race, steal, and collect cars to showcase your wealth.</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         <footer className="mt-12 text-center text-gray-500 text-sm">
           Potato Underworld © {new Date().getFullYear()}. All rights reserved.
         </footer>
