@@ -6,10 +6,10 @@ import { FaSpinner } from 'react-icons/fa';
 
 
 import BossList from '../components/Boss-components/BossList';
-import BossDetails from '../components/boss-components/BossDetails';
-import BattleControls from '../components/boss-components/BattleControls';
-import BattleResultModal from '../components/boss-components/BattleResultModal';
-import StatusMessages from '../components/boss-components/StatusMessages';
+import BossDetails from '../components/Boss-components/BossDetails';
+import BattleControls from '../components/Boss-components/BattleControls';
+import BattleResultModal from '../components/Boss-components/BattleResultModal';
+import StatusMessages from '../components/Boss-components/StatusMessages';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
